@@ -1,98 +1,116 @@
-# Instrucciones de Instalación y Ejecución
+# Guía de Ejecución y Despliegue (Monolito)
 
-## Sistema de Registro de Premios DH2OCOL
+Aplicación monolítica que incluye frontend estático y backend Flask sirviendo todo en el puerto `5000`. Despliegue preparado para producción con `gunicorn` dentro de contenedor Docker.
 
-### Requisitos Previos
-- Python 3.8 o superior
-- pip (gestor de paquetes de Python)
+## Requisitos
 
-### Paso 1: Instalar Dependencias
+- Docker 24+
+- PostgreSQL accesible (local o gestionado)
+- Opcional para desarrollo: Python 3.11 y `pip`
 
-Abre una terminal en la carpeta del proyecto y ejecuta:
+## Variables de Entorno
+
+Defínelas en tu entorno o en `backend/.env` (no se versiona):
+
+```env
+DATABASE_URL=postgresql+psycopg2://USER:PASS@HOST:5432/DBNAME
+SECRET_KEY=changeme
+JWT_SECRET_KEY=changeme
+DEBUG=false
+```
+
+Consulta `backend/MIGRACION_POSTGRES.md` para detalles de PostgreSQL.
+
+## Ejecutar con Docker (Producción)
+
+```bash
+docker build -t dh2ocol/trivia-monolith:latest .
+docker run --rm -p 8080:5000 \
+  -e DATABASE_URL="postgresql+psycopg2://USER:PASS@HOST:5432/DBNAME" \
+  -e SECRET_KEY="changeme" \
+  -e JWT_SECRET_KEY="changeme" \
+  -e DEBUG=false \
+  dh2ocol/trivia-monolith:latest
+```
+
+Accede a `http://localhost:8080/`.
+
+Healthcheck interno consulta `http://localhost:5000/api/estadisticas`.
+
+## Ejecutar sin Docker (Desarrollo)
 
 ```bash
 cd backend
 pip install -r requirements.txt
-```
-
-### Paso 2: Inicializar Base de Datos
-
-La base de datos se creará automáticamente al ejecutar el servidor por primera vez.
-
-### Paso 3: Ejecutar el Servidor
-
-```bash
+set DEBUG=true  # Windows PowerShell, opcional
 python app.py
 ```
 
-Deberías ver un mensaje como:
+El servidor quedará en `http://localhost:5000`.
+
+## Crear usuario Admin
+
+`/admin` y `/premios` requieren login. Crea un usuario admin:
+
+```bash
+cd backend
+python crear_admin.py <username> <password> <email>
 ```
-✅ Base de datos inicializada correctamente
-🚀 Servidor Flask iniciado en http://localhost:5000
-📝 Formulario de registro: http://localhost:5000/registro
-👨‍💼 Panel admin: http://localhost:5000/admin
-```
 
-### Paso 4: Acceder a la Aplicación
+Luego inicia sesión en `http://localhost:5000/login`.
 
-Abre tu navegador y visita:
+## Rutas principales
 
-- **Juego de Trivia**: http://localhost:5000/
-- **Formulario de Registro**: http://localhost:5000/registro
-- **Panel Administrativo**: http://localhost:5000/admin
+- `/` juego y assets estáticos (`index.html`, `script.js`, `assets/`)
+- `/registro` formulario de registro de premio
+- `/login` inicio de sesión
+- `/admin` panel administrativo (protegido)
+- `/premios` gestión de premios (protegido)
 
-### Flujo de Uso
+## API
 
-1. **Jugar**: Abre http://localhost:5000/ y juega trivia o memory card
-2. **Ganar Premio**: Responde 3 preguntas correctas o encuentra 3 pares
-3. **Ver Modal**: Se muestra el premio y código único
-4. **Registrar**: Click en "Registrar Premio" → Completa el formulario
-5. **Administrar**: Accede a http://localhost:5000/admin para ver todos los registros
+- `POST /api/login` inicio de sesión (set-cookie `auth_token`)
+- `POST /api/logout` cierre de sesión
+- `GET /api/verify` verificación de autenticación
+- `POST /api/registro` registrar premio de cliente
+- `GET /api/clientes` listar clientes
+- `PUT /api/canjear/{id}` marcar premio como canjeado
+- `GET /api/estadisticas` estadísticas del sistema
+- `GET /api/premios` listar premios
+- `POST /api/premio` crear premio
+- `PUT /api/premio/{id}` actualizar premio
+- `DELETE /api/premio/{id}` eliminar premio
 
-### Estructura de Archivos Creados
+## Despliegue con Dockploy
+
+- Crea una app y apunta al `Dockerfile` del monolito
+- Puerto del contenedor: `5000`
+- Dominio: `trivial.dh2o.com.co` con TLS
+- Variables: `DATABASE_URL`, `SECRET_KEY`, `JWT_SECRET_KEY`, `DEBUG=false`
+
+## Solución de Problemas
+
+- `DATABASE_URL` inválida: revisa credenciales, host, puerto
+- 401 en `/admin`: inicia sesión en `/login`
+- 5xx en API: verifica conectividad a PostgreSQL
+
+## Estructura
 
 ```
 trivia_dh2o/
 ├── backend/
-│   ├── app.py              ✅ Aplicación Flask
-│   ├── requirements.txt    ✅ Dependencias
-│   └── database.db         (se crea automáticamente)
+│   ├── app.py
+│   ├── requirements.txt
+│   ├── crear_admin.py
+│   └── MIGRACION_POSTGRES.md
 ├── templates/
-│   ├── registro.html       ✅ Formulario de registro
-│   └── admin.html          ✅ Panel administrativo
-├── index.html              ✅ Juego (modificado)
-└── script.js               ✅ Lógica (modificada)
+│   ├── admin.html
+│   ├── premios.html
+│   ├── login.html
+│   └── registro.html
+├── assets/
+│   ├── css/*  ├── js/*  └── img/*
+├── index.html
+├── script.js
+└── Dockerfile
 ```
-
-### Solución de Problemas
-
-**Error: "No module named 'flask'"**
-```bash
-pip install Flask Flask-SQLAlchemy Flask-CORS
-```
-
-**Error: "Port 5000 already in use"**
-- Cambia el puerto en `app.py` línea final: `app.run(port=5001)`
-
-**Base de datos no se crea**
-- Verifica que tengas permisos de escritura en la carpeta `backend/`
-
-### Características Implementadas
-
-✅ Backend Flask con SQLite
-✅ API REST completa
-✅ Formulario de registro con validación
-✅ Panel administrativo con estadísticas
-✅ Búsqueda y filtrado de registros
-✅ Exportación a CSV
-✅ Validación de códigos únicos
-✅ Prevención de duplicados
-✅ Diseño institucional DH2OCOL
-✅ Integración completa con el juego
-
-### Próximos Pasos (Opcional)
-
-- Agregar autenticación para panel admin
-- Implementar envío de emails
-- Generar códigos QR
-- Integrar con sistema CRM

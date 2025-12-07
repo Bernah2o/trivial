@@ -15,5 +15,7 @@ COPY . /app
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -f http://localhost:5000/api/estadisticas || exit 1
 
+RUN useradd -m -r -s /usr/sbin/nologin appuser && chown -R appuser:appuser /app
+USER appuser
 ENV GUNICORN_WORKERS=2 GUNICORN_THREADS=4 GUNICORN_TIMEOUT=60
-CMD ["gunicorn", "-w", "${GUNICORN_WORKERS}", "-k", "gthread", "--threads", "${GUNICORN_THREADS}", "--timeout", "${GUNICORN_TIMEOUT}", "--bind", "0.0.0.0:5000", "app:app"]
+CMD gunicorn --preload --access-logfile - --error-logfile - -w ${GUNICORN_WORKERS:-2} -k gthread --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-60} --bind 0.0.0.0:5000 app:app
