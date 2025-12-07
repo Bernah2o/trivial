@@ -298,6 +298,10 @@ def verify():
         'user': user.to_dict()
     })
 
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'})
+
 # ==================== API ENDPOINTS ====================
 @app.route('/api/registro', methods=['POST'])
 def registrar_cliente():
