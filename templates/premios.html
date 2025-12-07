@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gestión de Premios - DH2OCOL</title>
+    <link rel="stylesheet" href="../assets/css/premios.css" />
+    <link rel="icon" href="../assets/img/logo_4.png" type="image/png" />
+    <link
+      rel="shortcut icon"
+      href="../assets/img/logo_4.png"
+      type="image/png"
+    />
+    <link rel="apple-touch-icon" href="../assets/img/logo_4.png" />
+    <meta name="theme-color" content="#1986c8" />
+    <meta name="msapplication-TileColor" content="#008037" />
+  </head>
+  <body>
+    <div class="header">
+      <h1>🎁 Gestión de Premios - DH2OCOL</h1>
+      <div class="nav-buttons">
+        <button class="btn" onclick="window.location.href='/admin'">
+          👨‍💼 Panel Admin
+        </button>
+        <button class="btn" onclick="window.location.href='/'">
+          🏠 Inicio
+        </button>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="controls">
+        <div class="search-box">
+          <input type="text" id="search" placeholder="Buscar premios..." />
+        </div>
+        <button class="btn btn-success" onclick="abrirModalCrear()">
+          ➕ Nuevo Premio
+        </button>
+        <button class="btn" onclick="cargarPremios()">🔄 Actualizar</button>
+      </div>
+
+      <div class="table-container">
+        <div id="loading" class="loading">Cargando premios...</div>
+
+        <table id="premios-table" style="display: none">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>Descripción</th>
+              <th>Cantidad Disponible</th>
+              <th>Estado</th>
+              <th>Fecha Creación</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="premios-tbody"></tbody>
+        </table>
+
+        <div id="empty-state" class="empty-state" style="display: none">
+          <p>No hay premios registrados aún</p>
+          <p style="margin-top: 10px; font-size: 14px">
+            Haz clic en "Nuevo Premio" para agregar uno
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal para Crear/Editar Premio -->
+    <div id="modal-premio" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modal-title">Nuevo Premio</h2>
+          <button class="close-btn" onclick="cerrarModal()">×</button>
+        </div>
+
+        <div id="modal-error" class="error-message" style="display: none"></div>
+
+        <form id="form-premio" onsubmit="guardarPremio(event)">
+          <div class="form-group">
+            <label for="nombre">Nombre del Premio *</label>
+            <input type="text" id="nombre" required maxlength="100" />
+          </div>
+
+          <div class="form-group">
+            <label for="descripcion">Descripción</label>
+            <textarea id="descripcion" maxlength="500"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="cantidad">Cantidad Disponible *</label>
+            <input type="number" id="cantidad" required min="0" value="0" />
+          </div>
+
+          <div class="form-group">
+            <div class="checkbox-group">
+              <input type="checkbox" id="activo" checked />
+              <label for="activo" style="margin: 0">Premio Activo</label>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn" onclick="cerrarModal()">
+              Cancelar
+            </button>
+            <button type="submit" class="btn btn-success">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      let premios = [];
+      let premioEditando = null;
+
+      // Cargar premios al iniciar
+      document.addEventListener("DOMContentLoaded", () => {
+        cargarPremios();
+
+        // Búsqueda en tiempo real
+        document
+          .getElementById("search")
+          .addEventListener("input", filtrarPremios);
+      });
+
+      async function cargarPremios() {
+        try {
+          const response = await fetch("/api/premios");
+          const data = await response.json();
+
+          if (data.success) {
+            premios = data.premios;
+            renderizarPremios(premios);
+          }
+        } catch (error) {
+          console.error("Error al cargar premios:", error);
+          mostrarError("Error al cargar los premios");
+        }
+      }
+
+      function renderizarPremios(premiosData) {
+        const loading = document.getElementById("loading");
+        const table = document.getElementById("premios-table");
+        const emptyState = document.getElementById("empty-state");
+        const tbody = document.getElementById("premios-tbody");
+
+        loading.style.display = "none";
+
+        if (premiosData.length === 0) {
+          table.style.display = "none";
+          emptyState.style.display = "block";
+          return;
+        }
+
+        table.style.display = "table";
+        emptyState.style.display = "none";
+
+        tbody.innerHTML = premiosData
+          .map(
+            (premio) => `
+                <tr>
+                    <td>${premio.id}</td>
+                    <td><strong>${premio.nombre}</strong></td>
+                    <td>${premio.descripcion || "-"}</td>
+                    <td>${premio.cantidad_disponible}</td>
+                    <td>
+                        ${
+                          premio.activo
+                            ? '<span class="badge badge-success">✓ Activo</span>'
+                            : '<span class="badge badge-inactive">✗ Inactivo</span>'
+                        }
+                    </td>
+                    <td>${new Date(premio.fecha_creacion).toLocaleDateString(
+                      "es-CO"
+                    )}</td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="action-btn btn-edit" onclick="abrirModalEditar(${
+                              premio.id
+                            })">✏️ Editar</button>
+                            <button class="action-btn btn-delete" onclick="eliminarPremio(${
+                              premio.id
+                            })">🗑️ Eliminar</button>
+                        </div>
+                    </td>
+                </tr>
+            `
+          )
+          .join("");
+      }
+
+      function filtrarPremios() {
+        const searchTerm = document
+          .getElementById("search")
+          .value.toLowerCase();
+
+        const premiosFiltrados = premios.filter((premio) => {
+          return (
+            premio.nombre.toLowerCase().includes(searchTerm) ||
+            (premio.descripcion &&
+              premio.descripcion.toLowerCase().includes(searchTerm))
+          );
+        });
+
+        renderizarPremios(premiosFiltrados);
+      }
+
+      function abrirModalCrear() {
+        premioEditando = null;
+        document.getElementById("modal-title").textContent = "Nuevo Premio";
+        document.getElementById("form-premio").reset();
+        document.getElementById("activo").checked = true;
+        document.getElementById("modal-error").style.display = "none";
+        document.getElementById("modal-premio").classList.add("active");
+      }
+
+      function abrirModalEditar(id) {
+        const premio = premios.find((p) => p.id === id);
+        if (!premio) return;
+
+        premioEditando = premio;
+        document.getElementById("modal-title").textContent = "Editar Premio";
+        document.getElementById("nombre").value = premio.nombre;
+        document.getElementById("descripcion").value = premio.descripcion || "";
+        document.getElementById("cantidad").value = premio.cantidad_disponible;
+        document.getElementById("activo").checked = premio.activo;
+        document.getElementById("modal-error").style.display = "none";
+        document.getElementById("modal-premio").classList.add("active");
+      }
+
+      function cerrarModal() {
+        document.getElementById("modal-premio").classList.remove("active");
+        premioEditando = null;
+      }
+
+      async function guardarPremio(event) {
+        event.preventDefault();
+
+        const data = {
+          nombre: document.getElementById("nombre").value.trim(),
+          descripcion: document.getElementById("descripcion").value.trim(),
+          cantidad_disponible: parseInt(
+            document.getElementById("cantidad").value
+          ),
+          activo: document.getElementById("activo").checked,
+        };
+
+        try {
+          let response;
+          if (premioEditando) {
+            // Actualizar
+            response = await fetch(`/api/premio/${premioEditando.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+          } else {
+            // Crear
+            response = await fetch("/api/premio", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(data),
+            });
+          }
+
+          const result = await response.json();
+
+          if (result.success) {
+            cerrarModal();
+            cargarPremios();
+            alert(result.message);
+          } else {
+            mostrarErrorModal(result.message);
+          }
+        } catch (error) {
+          console.error("Error al guardar premio:", error);
+          mostrarErrorModal("Error al guardar el premio");
+        }
+      }
+
+      async function eliminarPremio(id) {
+        const premio = premios.find((p) => p.id === id);
+        if (!premio) return;
+
+        if (
+          !confirm(
+            `¿Estás seguro de eliminar el premio "${premio.nombre}"?\n\nEsta acción no se puede deshacer.`
+          )
+        ) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/premio/${id}`, {
+            method: "DELETE",
+          });
+
+          const result = await response.json();
+
+          if (result.success) {
+            cargarPremios();
+            alert(result.message);
+          } else {
+            alert(result.message);
+          }
+        } catch (error) {
+          console.error("Error al eliminar premio:", error);
+          alert("Error al eliminar el premio");
+        }
+      }
+
+      function mostrarErrorModal(mensaje) {
+        const errorDiv = document.getElementById("modal-error");
+        errorDiv.textContent = mensaje;
+        errorDiv.style.display = "block";
+      }
+
+      function mostrarError(mensaje) {
+        alert(mensaje);
+      }
+
+      // Cerrar modal al hacer clic fuera
+      document.getElementById("modal-premio").addEventListener("click", (e) => {
+        if (e.target.id === "modal-premio") {
+          cerrarModal();
+        }
+      });
+
+      async function cerrarSesion() {
+        if (!confirm("¿Estás seguro de cerrar sesión?")) return;
+
+        try {
+          const response = await fetch("/api/logout", {
+            method: "POST",
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            window.location.href = "/";
+          }
+        } catch (error) {
+          console.error("Error al cerrar sesión:", error);
+          window.location.href = "/";
+        }
+      }
+    </script>
+  </body>
+</html>

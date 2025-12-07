@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Registro de Premio - DH2OCOL</title>
+    <link rel="stylesheet" href="../assets/css/registro.css" />
+    <link rel="icon" href="../assets/img/logo_4.png" type="image/png" />
+    <link
+      rel="shortcut icon"
+      href="../assets/img/logo_4.png"
+      type="image/png"
+    />
+    <link rel="apple-touch-icon" href="../assets/img/logo_4.png" />
+    <meta name="theme-color" content="#1986c8" />
+    <meta name="msapplication-TileColor" content="#008037" />
+  </head>
+  <body>
+    <div class="header">
+      <h1>🎁 Registro de Premio</h1>
+      <p>DH2OCOL - Cuidamos tu agua, cuidamos tu salud</p>
+    </div>
+
+    <div class="container">
+      <div class="form-card">
+        <div id="alert-container"></div>
+
+        <div class="codigo-display">
+          <div class="label">Tu código de premio</div>
+          <div class="codigo" id="codigo-display">-</div>
+        </div>
+
+        <div class="premio-info">
+          <div class="premio" id="premio-display">-</div>
+        </div>
+
+        <form id="registro-form">
+          <div class="form-group">
+            <label for="codigo_premio"
+              >Código de Premio <span class="required">*</span></label
+            >
+            <input
+              type="text"
+              id="codigo_premio"
+              name="codigo_premio"
+              readonly
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="cedula"
+              >Número de Cédula <span class="required">*</span></label
+            >
+            <input
+              type="text"
+              id="cedula"
+              name="cedula"
+              placeholder="Ej: 1234567890"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="nombres">Nombres <span class="required">*</span></label>
+            <input
+              type="text"
+              id="nombres"
+              name="nombres"
+              placeholder="Ej: Juan Carlos"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="apellidos"
+              >Apellidos <span class="required">*</span></label
+            >
+            <input
+              type="text"
+              id="apellidos"
+              name="apellidos"
+              placeholder="Ej: Pérez García"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="direccion"
+              >Dirección <span class="required">*</span></label
+            >
+            <textarea
+              id="direccion"
+              name="direccion"
+              placeholder="Ej: Calle 123 #45-67, Bogotá"
+              required
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="telefono"
+              >Teléfono <span class="required">*</span></label
+            >
+            <input
+              type="tel"
+              id="telefono"
+              name="telefono"
+              placeholder="Ej: 3001234567"
+              required
+            />
+          </div>
+
+          <input type="hidden" id="premio" name="premio" />
+
+          <button type="submit" class="btn" id="submit-btn">
+            Registrar Premio
+          </button>
+        </form>
+
+        <a href="/" class="back-link">← Volver al juego</a>
+      </div>
+    </div>
+
+    <script>
+      // Obtener datos del premio desde URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const codigo = urlParams.get("codigo");
+      const premio = urlParams.get("premio");
+
+      if (codigo && premio) {
+        document.getElementById("codigo_premio").value = codigo;
+        document.getElementById("premio").value = premio;
+        document.getElementById("codigo-display").textContent = codigo;
+        document.getElementById("premio-display").textContent = premio;
+      } else {
+        showAlert(
+          "No se encontró información del premio. Por favor, juega primero para obtener un código.",
+          "error"
+        );
+      }
+
+      // Manejo del formulario
+      document
+        .getElementById("registro-form")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const submitBtn = document.getElementById("submit-btn");
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Registrando...";
+
+          const formData = {
+            codigo_premio: document.getElementById("codigo_premio").value,
+            cedula: document.getElementById("cedula").value,
+            nombres: document.getElementById("nombres").value,
+            apellidos: document.getElementById("apellidos").value,
+            direccion: document.getElementById("direccion").value,
+            telefono: document.getElementById("telefono").value,
+            premio: document.getElementById("premio").value,
+          };
+
+          try {
+            const response = await fetch("/api/registro", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(formData),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+              showAlert(
+                "¡Registro exitoso! Tu premio ha sido registrado correctamente. Presenta tu código en nuestras oficinas para canjearlo.",
+                "success"
+              );
+              document.getElementById("registro-form").reset();
+
+              setTimeout(() => {
+                window.location.href = "/";
+              }, 3000);
+            } else {
+              showAlert(
+                data.message ||
+                  "Error al registrar. Por favor, intenta de nuevo.",
+                "error"
+              );
+            }
+          } catch (error) {
+            showAlert(
+              "Error de conexión. Por favor, verifica tu conexión e intenta de nuevo.",
+              "error"
+            );
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Registrar Premio";
+          }
+        });
+
+      function showAlert(message, type) {
+        const container = document.getElementById("alert-container");
+        const alert = document.createElement("div");
+        alert.className = `alert alert-${type}`;
+        alert.textContent = message;
+        container.innerHTML = "";
+        container.appendChild(alert);
+
+        // Auto-hide después de 5 segundos para errores
+        if (type === "error") {
+          setTimeout(() => {
+            alert.remove();
+          }, 5000);
+        }
+      }
+    </script>
+  </body>
+</html>

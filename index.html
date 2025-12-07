@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trivia DH2OCOL</title>
+    <link rel="stylesheet" href="assets/css/style.css" />
+    <link rel="icon" href="assets/img/logo_4.png" type="image/png" />
+    <link rel="shortcut icon" href="assets/img/logo_4.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/img/logo_4.png" />
+    <meta name="theme-color" content="#1986c8" />
+    <meta name="msapplication-TileColor" content="#008037" />
+    <style>
+      .admin-access {
+        display: flex;
+        gap: 10px;
+      }
+      .btn-admin {
+        padding: 8px 16px;
+        background: linear-gradient(135deg, #1986c8 0%, #1eb8d1 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      .btn-admin:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(30, 184, 209, 0.4);
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <div class="brand">
+        <picture class="logo-wrap">
+          <source srcset="./assets/img/logo.png" type="image/svg+xml" />
+          <img src="./assets/img/logo.png" alt="DH2OCOL" class="logo" />
+        </picture>
+        <div class="brand-text">
+          <span class="brand-title">DH2OCOL</span>
+          <span class="tagline">Cuidamos tu agua, cuidamos tu salud.</span>
+        </div>
+      </div>
+      <div class="admin-access">
+        <button
+          onclick="window.location.href='/login'"
+          class="btn-admin"
+          title="Acceso Administrativo"
+        >
+          🔐 Login Admin
+        </button>
+      </div>
+    </header>
+    <main class="container">
+      <!-- HOME SCREEN -->
+      <section id="screen-home" class="screen">
+        <h1>Centro de Juegos DH2OCOL</h1>
+        <div class="game-modes">
+          <h2>Selecciona un modo de juego</h2>
+          <div class="mode-selector">
+            <button id="btn-mode-trivia" class="mode-card selected">
+              <div class="mode-icon">🎯</div>
+              <strong>Trivia</strong>
+              <span>Responde preguntas y gana premios</span>
+            </button>
+            <button id="btn-mode-memory" class="mode-card">
+              <div class="mode-icon">🧠</div>
+              <strong>Memory Card</strong>
+              <span>Encuentra los pares de conceptos</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- TRIVIA MODE SELECTION -->
+        <div id="trivia-selection" class="packs">
+          <h2>Selecciona una trivia</h2>
+          <div id="packs-list" class="packs-list" role="list"></div>
+        </div>
+
+        <!-- MEMORY MODE SELECTION -->
+        <div id="memory-selection" class="packs hidden">
+          <h2>Selecciona un nivel</h2>
+          <div id="memory-levels" class="packs-list" role="list"></div>
+        </div>
+
+        <div class="actions">
+          <button id="btn-leaderboard" class="btn">🏆 Mejores Puntajes</button>
+          <button id="btn-fullscreen" class="btn">Pantalla completa</button>
+          <button id="btn-start" class="btn btn-primary" disabled>
+            Iniciar Juego
+          </button>
+        </div>
+        <p class="site-note">
+          Servicios: limpieza y desinfección de tanques, inspección con dron,
+          instalación profesional. Más en www.dh2o.com.co
+        </p>
+      </section>
+
+      <!-- TRIVIA GAME SCREEN -->
+      <section id="screen-game" class="screen hidden">
+        <div class="game-header">
+          <div class="status">
+            <div id="lives" class="lives"></div>
+            <div id="score" class="score">Puntos: 0</div>
+            <div id="pack-name" class="pack-name"></div>
+          </div>
+          <div class="progress-container">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
+          <div id="timer" class="timer">30s</div>
+        </div>
+        <div id="question" class="question"></div>
+        <div id="options" class="options" role="list"></div>
+        <button id="btn-trivia-quit" class="btn btn-secondary btn-quit">
+          ← Regresar
+        </button>
+      </section>
+
+      <!-- MEMORY GAME SCREEN -->
+      <section id="screen-memory" class="screen hidden">
+        <div class="game-header">
+          <div class="status">
+            <div id="memory-moves" class="lives">Movimientos: 0</div>
+            <div id="memory-score" class="score">Puntos: 0</div>
+            <div id="memory-pairs" class="pack-name">Pares: 0/8</div>
+          </div>
+          <div id="memory-timer" class="timer">0s</div>
+        </div>
+        <div id="memory-board" class="memory-board"></div>
+        <button id="btn-memory-quit" class="btn btn-secondary btn-quit">
+          ← Regresar
+        </button>
+      </section>
+
+      <!-- FINAL SCREEN -->
+      <section id="screen-final" class="screen hidden">
+        <h2 id="final-title"></h2>
+        <div id="final-stats" class="final-stats"></div>
+        <p id="final-code" class="final-code"></p>
+        <button id="btn-restart" class="btn">Volver a jugar</button>
+        <p class="site-note">Conoce más en www.dh2o.com.co</p>
+      </section>
+    </main>
+
+    <!-- PRIZE MODAL -->
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-content">
+        <h3>¡Premio!</h3>
+        <p id="modal-prize"></p>
+        <p id="modal-code" class="code"></p>
+        <div style="display: flex; gap: 12px; margin-top: 16px">
+          <button
+            id="btn-register-prize"
+            class="btn btn-primary"
+            style="flex: 1"
+          >
+            Registrar Premio
+          </button>
+          <button id="btn-close-modal" class="btn">Continuar Jugando</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD MODAL -->
+    <div
+      id="leaderboard-modal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="modal-content leaderboard-content">
+        <h3>🏆 Mejores Puntajes</h3>
+        <div class="leaderboard-tabs">
+          <button id="tab-trivia" class="tab-btn active">Trivia</button>
+          <button id="tab-memory" class="tab-btn">Memory</button>
+        </div>
+        <div id="leaderboard-list" class="leaderboard-list"></div>
+        <button id="btn-close-leaderboard" class="btn">Cerrar</button>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

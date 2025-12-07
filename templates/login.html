@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - DH2OCOL Admin</title>
+    <link rel="stylesheet" href="../assets/css/login.css" />
+    <link rel="icon" href="../assets/img/logo_4.png" type="image/png" />
+    <link
+      rel="shortcut icon"
+      href="../assets/img/logo_4.png"
+      type="image/png"
+    />
+    <link rel="apple-touch-icon" href="../assets/img/logo_4.png" />
+    <meta name="theme-color" content="#1986c8" />
+    <meta name="msapplication-TileColor" content="#008037" />
+  </head>
+  <body>
+    <div class="login-container">
+      <div class="logo">
+        <h1>🔐 DH2OCOL Admin</h1>
+        <p>Panel de Administración</p>
+      </div>
+
+      <div id="error-message" class="error-message"></div>
+
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Usuario</label>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            required
+            autocomplete="username"
+            placeholder="Ingresa tu usuario"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password">Contraseña</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            autocomplete="current-password"
+            placeholder="Ingresa tu contraseña"
+          />
+        </div>
+
+        <button type="submit" class="btn-login" id="btn-submit">
+          Iniciar Sesión
+        </button>
+
+        <div id="loading" class="loading">Iniciando sesión...</div>
+      </form>
+
+      <div class="back-link">
+        <a href="/">← Volver al inicio</a>
+      </div>
+    </div>
+
+    <script>
+      const form = document.getElementById("login-form");
+      const errorMessage = document.getElementById("error-message");
+      const loading = document.getElementById("loading");
+      const btnSubmit = document.getElementById("btn-submit");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+
+        // Ocultar error previo
+        errorMessage.classList.remove("show");
+
+        // Mostrar loading
+        loading.classList.add("show");
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Iniciando...";
+
+        try {
+          const response = await fetch("/api/login", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ username, password }),
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            // Login exitoso
+            window.location.href = "/admin";
+          } else {
+            // Mostrar error
+            showError(data.message || "Error al iniciar sesión");
+          }
+        } catch (error) {
+          showError("Error de conexión. Por favor, intenta de nuevo.");
+          console.error("Error:", error);
+        } finally {
+          loading.classList.remove("show");
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = "Iniciar Sesión";
+        }
+      });
+
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.classList.add("show");
+      }
+
+      // Auto-focus en el campo de usuario
+      document.getElementById("username").focus();
+    </script>
+  </body>
+</html>
