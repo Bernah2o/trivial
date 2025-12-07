@@ -116,7 +116,8 @@ function filtrarClientes() {
 }
 
 async function canjearPremio(id) {
-  if (!confirm('¿Marcar este premio como canjeado?')) return;
+  const ok = await confirmModal('¿Marcar este premio como canjeado?', { okText: 'Confirmar', cancelText: 'Cancelar' });
+  if (!ok) return;
   try {
     const response = await fetch(`/api/canjear/${id}`, { method: 'PUT' });
     const data = await response.json();
@@ -161,7 +162,8 @@ function exportarCSV() {
 }
 
 async function cerrarSesion() {
-  if (!confirm('¿Estás seguro de cerrar sesión?')) return;
+  const ok = await confirmModal('¿Estás seguro de cerrar sesión?', { okText: 'Cerrar sesión', cancelText: 'Cancelar' });
+  if (!ok) return;
   try {
     const response = await fetch('/api/logout', { method: 'POST' });
     if (response.ok) {
@@ -181,3 +183,47 @@ function td(text) { const c = document.createElement('td'); c.textContent = Stri
 function tdWithClass(text, cls) { const c = td(text); c.className = cls; return c; }
 function safe(v) { return v == null ? '' : v; }
 function formatDate(d) { try { return d ? new Date(d).toLocaleString('es-CO') : ''; } catch { return ''; } }
+
+function confirmModal(message, opts) {
+  return new Promise((resolve) => {
+    const o = opts || {};
+    const okText = o.okText || 'Confirmar';
+    const cancelText = o.cancelText || 'Cancelar';
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    const content = document.createElement('div');
+    content.className = 'modal-content';
+    const p = document.createElement('p');
+    p.textContent = String(message || '');
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    const btnOk = document.createElement('button');
+    btnOk.className = 'btn btn-success';
+    btnOk.textContent = okText;
+    const btnCancel = document.createElement('button');
+    btnCancel.className = 'btn btn-danger';
+    btnCancel.textContent = cancelText;
+    function cleanup(v) {
+      document.removeEventListener('keydown', onKey);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      resolve(v);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') cleanup(false);
+      if (e.key === 'Enter') cleanup(true);
+    }
+    btnOk.addEventListener('click', () => cleanup(true));
+    btnCancel.addEventListener('click', () => cleanup(false));
+    document.addEventListener('keydown', onKey);
+    actions.appendChild(btnCancel);
+    actions.appendChild(btnOk);
+    content.appendChild(p);
+    content.appendChild(actions);
+    modal.appendChild(content);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    btnOk.focus();
+  });
+}
