@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv, dotenv_values
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 import jwt
 from functools import wraps
 
@@ -23,6 +24,7 @@ else:
 app = Flask(__name__, 
             template_folder='../templates',
             static_folder='../assets')
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 # Configuración de la base de datos PostgreSQL
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -32,6 +34,12 @@ if not DATABASE_URL:
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 1800,
+    'pool_size': 10,
+    'max_overflow': 20
+}
 
 # Configuración JWT
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'super-secret-key-change-in-production')
@@ -39,7 +47,10 @@ app.config['JWT_EXPIRATION_HOURS'] = 24
 
 # Inicializar extensiones
 db = SQLAlchemy(app)
-CORS(app)
+if os.getenv('DEBUG', 'false').lower() == 'true':
+    CORS(app)
+else:
+    CORS(app, origins=[os.getenv('CORS_ORIGIN', 'https://trivial.dh2o.com.co')])
 
 # ==================== MODELOS ====================
 class Cliente(db.Model):
@@ -145,9 +156,12 @@ def token_required(f):
             return redirect('/login')
         
         user_id = verify_token(token)
-        if not user_id:
+        if not token:
             response = redirect('/login')
-            response.set_cookie('auth_token', '', expires=0)
+            is_secure = (request.headers.get('X-Forwarded-Proto', '').lower() == 'https') or request.is_secure
+            response.set_cookie('auth_token', '', expires=0, secure=is_secure, samesite='Lax', path='/')
+            return response
+            return response
             return response
         
         return f(*args, **kwargs)
@@ -223,7 +237,8 @@ def login():
             'message': 'Login exitoso',
             'user': user.to_dict()
         })
-        response.set_cookie('auth_token', token, httponly=True, max_age=86400)  # 24 horas
+        is_secure = (request.headers.get('X-Forwarded-Proto', '').lower() == 'https') or request.is_secure
+        response.set_cookie('auth_token', token, httponly=True, max_age=86400, secure=is_secure, samesite='Lax', path='/')
         
         return response
         
@@ -237,7 +252,8 @@ def login():
 def logout():
     """Endpoint de logout"""
     response = jsonify({'success': True, 'message': 'Logout exitoso'})
-    response.set_cookie('auth_token', '', expires=0)
+    is_secure = (request.headers.get('X-Forwarded-Proto', '').lower() == 'https') or request.is_secure
+    response.set_cookie('auth_token', '', expires=0, secure=is_secure, samesite='Lax', path='/')
     return response
 
 @app.route('/api/verify', methods=['GET'])
