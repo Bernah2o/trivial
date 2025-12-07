@@ -286,7 +286,7 @@
           if (result.success) {
             cerrarModal();
             cargarPremios();
-            alert(result.message);
+            showToast(result.message, 'success');
           } else {
             mostrarErrorModal(result.message);
           }
@@ -315,14 +315,14 @@
 
           if (result.success) {
             cargarPremios();
-            alert(result.message);
+            showToast(result.message, 'success');
           } else {
-            alert(result.message);
+            showToast(result.message, 'error');
           }
         } catch (error) {
           console.error("Error al eliminar premio:", error);
-          alert("Error al eliminar el premio");
-        }
+          showToast("Error al eliminar el premio", 'error');
+          }
       }
 
       function mostrarErrorModal(mensaje) {
@@ -332,7 +332,7 @@
       }
 
       function mostrarError(mensaje) {
-        alert(mensaje);
+        showToast(mensaje, 'error');
       }
 
       // Cerrar modal al hacer clic fuera
@@ -413,6 +413,25 @@
             { once: true }
           );
         });
+      }
+
+      function showToast(message, type) {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+          container = document.createElement('div');
+          container.id = 'toast-container';
+          container.className = 'toast-container';
+          document.body.appendChild(container);
+        }
+        const t = document.createElement('div');
+        t.className = 'toast ' + (type ? 'toast-' + type : 'toast-info');
+        t.textContent = String(message || '');
+        container.appendChild(t);
+        requestAnimationFrame(() => { t.classList.add('visible'); });
+        setTimeout(() => {
+          t.classList.remove('visible');
+          setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 250);
+        }, 3500);
       }
     </script>
   </body>

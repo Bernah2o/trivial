@@ -303,6 +303,13 @@ body {
   margin: 12px 0;
 }
 
+.prize-validity {
+  font-size: 14px;
+  color: var(--azul);
+  opacity: 0.9;
+  margin-top: 4px;
+}
+
 /* Game Mode Selector */
 .game-modes {
   width: 100%;
