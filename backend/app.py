@@ -126,6 +126,27 @@ class User(db.Model):
             'created_at': self.created_at.isoformat()
         }
 
+def ensure_default_admin():
+    username = os.getenv('ADMIN_USERNAME')
+    password = os.getenv('ADMIN_PASSWORD')
+    email = os.getenv('ADMIN_EMAIL')
+    auto = os.getenv('ADMIN_AUTO_CREATE', 'false').lower() == 'true'
+    if not auto:
+        return
+    with app.app_context():
+        if not username or not password or not email:
+            print('⚠️ ADMIN_AUTO_CREATE activo pero faltan variables ADMIN_USERNAME/ADMIN_PASSWORD/ADMIN_EMAIL')
+            return
+        existing = User.query.filter((User.username == username) | (User.email == email)).first()
+        if existing:
+            print('ℹ️ Usuario admin ya existe')
+            return
+        user = User(username=username, email=email, is_admin=True)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        print(f"✅ Usuario admin '{username}' creado")
+
 # ==================== JWT UTILITIES ====================
 def generate_token(user_id):
     """Genera un token JWT para el usuario"""
@@ -583,6 +604,7 @@ def init_db():
         print("✅ Base de datos inicializada correctamente")
 
 init_db()
+ensure_default_admin()
 
 if __name__ == '__main__':
     init_db()
