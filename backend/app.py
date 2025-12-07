@@ -3,13 +3,22 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 from functools import wraps
 
-# Cargar variables de entorno
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+debug_env = os.getenv('DEBUG')
+if debug_env is None:
+    file_debug = False
+    if os.path.exists(env_path):
+        file_debug = str(dotenv_values(env_path).get('DEBUG', '')).lower() == 'true'
+    if file_debug:
+        load_dotenv(env_path)
+else:
+    if debug_env.lower() == 'true' and os.path.exists(env_path):
+        load_dotenv(env_path)
 
 app = Flask(__name__, 
             template_folder='../templates',
@@ -18,7 +27,7 @@ app = Flask(__name__,
 # Configuración de la base de datos PostgreSQL
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
-    raise ValueError("❌ DATABASE_URL no está configurada en el archivo .env")
+    raise ValueError("❌ DATABASE_URL no está configurada")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -557,9 +566,7 @@ def init_db():
         db.create_all()
         print("✅ Base de datos inicializada correctamente")
 
-@app.before_first_request
-def ensure_db_initialized():
-    init_db()
+init_db()
 
 if __name__ == '__main__':
     init_db()
