@@ -109,6 +109,24 @@
       </div>
     </div>
 
+    <div id="confirm-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="confirm-title">Confirmación</h2>
+          <button class="close-btn">×</button>
+        </div>
+        <p id="confirm-message"></p>
+        <div class="form-actions">
+          <button type="button" class="btn" id="confirm-cancel-btn">
+            Cancelar
+          </button>
+          <button type="button" class="btn btn-danger" id="confirm-ok-btn">
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script>
       let premios = [];
       let premioEditando = null;
@@ -282,13 +300,11 @@
         const premio = premios.find((p) => p.id === id);
         if (!premio) return;
 
-        if (
-          !confirm(
-            `¿Estás seguro de eliminar el premio "${premio.nombre}"?\n\nEsta acción no se puede deshacer.`
-          )
-        ) {
-          return;
-        }
+        const ok = await confirmModal(
+          `¿Estás seguro de eliminar el premio "${premio.nombre}"?\n\nEsta acción no se puede deshacer.`,
+          { okText: "Eliminar", title: "Confirmar eliminación" }
+        );
+        if (!ok) return;
 
         try {
           const response = await fetch(`/api/premio/${id}`, {
@@ -327,7 +343,11 @@
       });
 
       async function cerrarSesion() {
-        if (!confirm("¿Estás seguro de cerrar sesión?")) return;
+        const ok = await confirmModal("¿Estás seguro de cerrar sesión?", {
+          okText: "Cerrar sesión",
+          title: "Confirmar",
+        });
+        if (!ok) return;
 
         try {
           const response = await fetch("/api/logout", {
@@ -343,6 +363,56 @@
           console.error("Error al cerrar sesión:", error);
           window.location.href = "/";
         }
+      }
+
+      function confirmModal(message, opts) {
+        return new Promise((resolve) => {
+          const m = document.getElementById("confirm-modal");
+          const msgEl = document.getElementById("confirm-message");
+          const okBtn = document.getElementById("confirm-ok-btn");
+          const cancelBtn = document.getElementById("confirm-cancel-btn");
+          const titleEl = document.getElementById("confirm-title");
+          const o = opts || {};
+          if (titleEl) titleEl.textContent = o.title || "Confirmación";
+          if (msgEl) msgEl.textContent = String(message || "");
+          if (okBtn) okBtn.textContent = o.okText || "Confirmar";
+          let done = false;
+          function cleanup(v) {
+            if (done) return;
+            done = true;
+            document.removeEventListener("keydown", onKey);
+            if (okBtn) okBtn.removeEventListener("click", onOk);
+            if (cancelBtn) cancelBtn.removeEventListener("click", onCancel);
+            const closeBtn = m.querySelector(".close-btn");
+            if (closeBtn) closeBtn.removeEventListener("click", onCancel);
+            m.classList.remove("active");
+            resolve(v);
+          }
+          function onKey(e) {
+            if (e.key === "Escape") cleanup(false);
+            if (e.key === "Enter") cleanup(true);
+          }
+          function onOk() {
+            cleanup(true);
+          }
+          function onCancel() {
+            cleanup(false);
+          }
+          if (okBtn) okBtn.addEventListener("click", onOk);
+          if (cancelBtn) cancelBtn.addEventListener("click", onCancel);
+          const closeBtn = m.querySelector(".close-btn");
+          if (closeBtn) closeBtn.addEventListener("click", onCancel);
+          document.addEventListener("keydown", onKey);
+          m.classList.add("active");
+          if (okBtn) okBtn.focus();
+          m.addEventListener(
+            "click",
+            function (e) {
+              if (e.target.id === "confirm-modal") cleanup(false);
+            },
+            { once: true }
+          );
+        });
       }
     </script>
   </body>
