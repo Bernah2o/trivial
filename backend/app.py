@@ -66,6 +66,8 @@ class Cliente(db.Model):
     premio = db.Column(db.String(100), nullable=False)
     fecha_registro = db.Column(db.DateTime, default=datetime.utcnow)
     canjeado = db.Column(db.Boolean, default=False)
+    updated_at = db.Column(db.DateTime, nullable=True)
+    updated_by = db.Column(db.String(120), nullable=True)
     
     def to_dict(self):
         return {
@@ -78,7 +80,9 @@ class Cliente(db.Model):
             'telefono': self.telefono,
             'premio': self.premio,
             'fecha_registro': self.fecha_registro.isoformat(),
-            'canjeado': self.canjeado
+            'canjeado': self.canjeado,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'updated_by': self.updated_by
         }
 
 class Premio(db.Model):
@@ -101,6 +105,61 @@ class Premio(db.Model):
             'fecha_creacion': self.fecha_creacion.isoformat()
         }
 
+class Categoria(db.Model):
+    __tablename__ = 'categorias'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), unique=True, nullable=False)
+    descripcion = db.Column(db.Text, nullable=True)
+    activa = db.Column(db.Boolean, default=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nombre': self.nombre,
+            'descripcion': self.descripcion,
+            'activa': self.activa,
+            'fecha_creacion': self.fecha_creacion.isoformat()
+        }
+
+class Pregunta(db.Model):
+    __tablename__ = 'preguntas'
+    id = db.Column(db.Integer, primary_key=True)
+    texto = db.Column(db.Text, nullable=False)
+    categoria = db.Column(db.String(100), nullable=True)
+    categoria_id = db.Column(db.Integer, db.ForeignKey('categorias.id'), nullable=True)
+    categoria_obj = db.relationship('Categoria', lazy=True)
+    dificultad = db.Column(db.String(50), nullable=True)
+    activa = db.Column(db.Boolean, default=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    opciones = db.relationship('Opcion', backref='pregunta', cascade='all, delete-orphan', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'texto': self.texto,
+            'categoria': self.categoria_obj.nombre if self.categoria_obj else self.categoria,
+            'categoria_id': self.categoria_id,
+            'dificultad': self.dificultad,
+            'activa': self.activa,
+            'fecha_creacion': self.fecha_creacion.isoformat(),
+            'opciones': [o.to_dict() for o in self.opciones]
+        }
+
+class Opcion(db.Model):
+    __tablename__ = 'opciones'
+    id = db.Column(db.Integer, primary_key=True)
+    texto = db.Column(db.Text, nullable=False)
+    correcta = db.Column(db.Boolean, default=False)
+    pregunta_id = db.Column(db.Integer, db.ForeignKey('preguntas.id'), nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'texto': self.texto,
+            'correcta': self.correcta,
+            'pregunta_id': self.pregunta_id
+        }
 class User(db.Model):
     __tablename__ = 'users'
     
@@ -125,6 +184,38 @@ class User(db.Model):
             'is_admin': self.is_admin,
             'created_at': self.created_at.isoformat()
         }
+
+def ensure_constraints():
+    try:
+        with app.app_context():
+            db.session.execute(db.text("CREATE UNIQUE INDEX IF NOT EXISTS idx_clientes_cedula_unique ON clientes (cedula)"))
+            exists_updated_at = db.session.execute(db.text("SELECT 1 FROM information_schema.columns WHERE table_name='clientes' AND column_name='updated_at'"))
+            if not exists_updated_at.scalar():
+                db.session.execute(db.text("ALTER TABLE clientes ADD COLUMN updated_at TIMESTAMP"))
+            exists_updated_by = db.session.execute(db.text("SELECT 1 FROM information_schema.columns WHERE table_name='clientes' AND column_name='updated_by'"))
+            if not exists_updated_by.scalar():
+                db.session.execute(db.text("ALTER TABLE clientes ADD COLUMN updated_by VARCHAR(120)"))
+            # Preguntas: agregar columna categoria_id si no existe
+            exists_catid = db.session.execute(db.text("SELECT 1 FROM information_schema.columns WHERE table_name='preguntas' AND column_name='categoria_id'"))
+            if not exists_catid.scalar():
+                db.session.execute(db.text("ALTER TABLE preguntas ADD COLUMN categoria_id INTEGER"))
+            # Crear índice único en nombre de categorías
+            db.session.execute(db.text("CREATE UNIQUE INDEX IF NOT EXISTS idx_categorias_nombre_unique ON categorias (nombre)"))
+            db.session.commit()
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"⚠️ No se pudo aplicar constraints: {e}")
+
+def current_user():
+    try:
+        token = request.cookies.get('auth_token')
+        uid = verify_token(token) if token else None
+        return User.query.get(uid) if uid else None
+    except Exception:
+        return None
 
 def ensure_default_admin():
     username = os.getenv('ADMIN_USERNAME')
@@ -226,6 +317,16 @@ def premios():
     """Panel de gestión de premios"""
     return render_template('premios.html')
 
+@app.route('/preguntas')
+@token_required
+def preguntas_page():
+    return render_template('preguntas.html')
+
+@app.route('/categorias')
+@token_required
+def categorias_page():
+    return render_template('categorias.html')
+
 
 
 # ==================== API ENDPOINTS - AUTHENTICATION ====================
@@ -325,17 +426,41 @@ def registrar_cliente():
                 'success': False,
                 'message': 'Este código de premio ya ha sido registrado'
             }), 400
+
+        cedula_norm = str(data['cedula']).strip()
+        cliente_por_cedula = Cliente.query.filter_by(cedula=cedula_norm).first()
+        if cliente_por_cedula:
+            return jsonify({
+                'success': False,
+                'message': 'Esta cédula ya tiene un premio registrado'
+            }), 400
+
+        premio_nombre = str(data['premio']).strip()
+        premio_obj = Premio.query.filter_by(nombre=premio_nombre, activo=True).first()
+        if not premio_obj:
+            return jsonify({
+                'success': False,
+                'message': 'Premio no válido'
+            }), 400
+        if premio_obj.cantidad_disponible <= 0:
+            return jsonify({
+                'success': False,
+                'message': 'No hay unidades disponibles de este premio'
+            }), 400
         
         # Crear nuevo cliente
         nuevo_cliente = Cliente(
             codigo_premio=data['codigo_premio'],
-            cedula=data['cedula'],
-            nombres=data['nombres'],
-            apellidos=data['apellidos'],
+            cedula=cedula_norm,
+            nombres=str(data['nombres']).upper(),
+            apellidos=str(data['apellidos']).upper(),
             direccion=data['direccion'],
             telefono=data['telefono'],
-            premio=data['premio']
+            premio=premio_nombre,
+            updated_at=datetime.utcnow(),
+            updated_by=(current_user().username if current_user() else None)
         )
+        premio_obj.cantidad_disponible = max(0, premio_obj.cantidad_disponible - 1)
         
         db.session.add(nuevo_cliente)
         db.session.commit()
@@ -343,7 +468,8 @@ def registrar_cliente():
         return jsonify({
             'success': True,
             'message': 'Registro exitoso',
-            'id': nuevo_cliente.id
+            'id': nuevo_cliente.id,
+            'premio': premio_obj.to_dict()
         }), 201
         
     except Exception as e:
@@ -381,6 +507,169 @@ def listar_clientes():
         'total': len(clientes)
     })
 
+@app.route('/api/preguntas', methods=['GET'])
+def listar_preguntas():
+    activa_param = request.args.get('activa')
+    q = Pregunta.query
+    if activa_param is not None:
+        active = str(activa_param).lower() == 'true'
+        q = q.filter_by(activa=active)
+    preguntas = q.order_by(Pregunta.fecha_creacion.desc()).all()
+    return jsonify({'success': True, 'preguntas': [p.to_dict() for p in preguntas], 'total': len(preguntas)})
+
+@app.route('/api/pregunta', methods=['POST'])
+def crear_pregunta():
+    try:
+        data = request.get_json() or {}
+        texto = str(data.get('texto', '')).strip()
+        if not texto:
+            return jsonify({'success': False, 'message': 'El texto de la pregunta es requerido'}), 400
+        p = Pregunta(
+            texto=texto,
+            categoria=data.get('categoria'),
+            dificultad=data.get('dificultad'),
+            activa=bool(data.get('activa', True))
+        )
+        if data.get('categoria_id') is not None:
+            cat = Categoria.query.get(data.get('categoria_id'))
+            if not cat or not cat.activa:
+                return jsonify({'success': False, 'message': 'Categoría no válida'}), 400
+            p.categoria_id = cat.id
+            p.categoria = cat.nombre
+        opciones = data.get('opciones') or []
+        if not opciones:
+            return jsonify({'success': False, 'message': 'Debe incluir opciones'}), 400
+        tiene_correcta = any(bool(o.get('correcta')) for o in opciones)
+        if not tiene_correcta:
+            return jsonify({'success': False, 'message': 'Debe existir al menos una opción correcta'}), 400
+        for o in opciones:
+            p.opciones.append(Opcion(texto=str(o.get('texto', '')).strip(), correcta=bool(o.get('correcta'))))
+        db.session.add(p)
+        db.session.commit()
+        return jsonify({'success': True, 'pregunta': p.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al crear pregunta: {str(e)}'}), 500
+
+@app.route('/api/pregunta/<int:id>', methods=['GET'])
+def obtener_pregunta(id):
+    p = Pregunta.query.get_or_404(id)
+    return jsonify({'success': True, 'pregunta': p.to_dict()})
+
+@app.route('/api/pregunta/<int:id>', methods=['PUT'])
+def actualizar_pregunta(id):
+    try:
+        p = Pregunta.query.get_or_404(id)
+        data = request.get_json() or {}
+        if 'texto' in data:
+            t = str(data.get('texto') or '').strip()
+            if not t:
+                return jsonify({'success': False, 'message': 'El texto de la pregunta es requerido'}), 400
+            p.texto = t
+        if 'categoria_id' in data and data.get('categoria_id') is not None:
+            cat = Categoria.query.get(data.get('categoria_id'))
+            if not cat or not cat.activa:
+                return jsonify({'success': False, 'message': 'Categoría no válida'}), 400
+            p.categoria_id = cat.id
+            p.categoria = cat.nombre
+        elif 'categoria' in data:
+            p.categoria = data.get('categoria')
+        if 'dificultad' in data:
+            p.dificultad = data.get('dificultad')
+        if 'activa' in data:
+            p.activa = bool(data.get('activa'))
+        if 'opciones' in data:
+            opciones = data.get('opciones') or []
+            if not opciones:
+                return jsonify({'success': False, 'message': 'Debe incluir opciones'}), 400
+            tiene_correcta = any(bool(o.get('correcta')) for o in opciones)
+            if not tiene_correcta:
+                return jsonify({'success': False, 'message': 'Debe existir al menos una opción correcta'}), 400
+            Opcion.query.filter_by(pregunta_id=p.id).delete()
+            for o in opciones:
+                db.session.add(Opcion(texto=str(o.get('texto', '')).strip(), correcta=bool(o.get('correcta')), pregunta_id=p.id))
+        db.session.commit()
+        return jsonify({'success': True, 'pregunta': p.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al actualizar pregunta: {str(e)}'}), 500
+
+@app.route('/api/pregunta/<int:id>', methods=['DELETE'])
+def eliminar_pregunta(id):
+    try:
+        p = Pregunta.query.get_or_404(id)
+        db.session.delete(p)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Pregunta eliminada'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al eliminar pregunta: {str(e)}'}), 500
+
+@app.route('/api/categorias', methods=['GET'])
+def listar_categorias():
+    activa_param = request.args.get('activa')
+    q = Categoria.query
+    if activa_param is not None:
+        active = str(activa_param).lower() == 'true'
+        q = q.filter_by(activa=active)
+    cats = q.order_by(Categoria.nombre.asc()).all()
+    return jsonify({'success': True, 'categorias': [c.to_dict() for c in cats], 'total': len(cats)})
+
+@app.route('/api/categoria', methods=['POST'])
+def crear_categoria():
+    try:
+        data = request.get_json() or {}
+        nombre = str(data.get('nombre', '')).strip()
+        if not nombre:
+            return jsonify({'success': False, 'message': 'El nombre de la categoría es requerido'}), 400
+        existe = Categoria.query.filter_by(nombre=nombre).first()
+        if existe:
+            return jsonify({'success': False, 'message': 'Ya existe una categoría con ese nombre'}), 400
+        c = Categoria(nombre=nombre, descripcion=data.get('descripcion'), activa=bool(data.get('activa', True)))
+        db.session.add(c)
+        db.session.commit()
+        return jsonify({'success': True, 'categoria': c.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al crear categoría: {str(e)}'}), 500
+
+@app.route('/api/categoria/<int:id>', methods=['PUT'])
+def actualizar_categoria(id):
+    try:
+        c = Categoria.query.get_or_404(id)
+        data = request.get_json() or {}
+        if 'nombre' in data:
+            nombre = str(data.get('nombre') or '').strip()
+            if not nombre:
+                return jsonify({'success': False, 'message': 'El nombre es requerido'}), 400
+            dup = Categoria.query.filter(Categoria.nombre == nombre, Categoria.id != id).first()
+            if dup:
+                return jsonify({'success': False, 'message': 'Ya existe otra categoría con ese nombre'}), 400
+            c.nombre = nombre
+        if 'descripcion' in data:
+            c.descripcion = data.get('descripcion')
+        if 'activa' in data:
+            c.activa = bool(data.get('activa'))
+        db.session.commit()
+        return jsonify({'success': True, 'categoria': c.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al actualizar categoría: {str(e)}'}), 500
+
+@app.route('/api/categoria/<int:id>', methods=['DELETE'])
+def eliminar_categoria(id):
+    try:
+        c = Categoria.query.get_or_404(id)
+        count_p = Pregunta.query.filter_by(categoria_id=c.id).count()
+        if count_p > 0:
+            return jsonify({'success': False, 'message': 'No se puede eliminar: hay preguntas asociadas'}), 400
+        db.session.delete(c)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Categoría eliminada'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al eliminar categoría: {str(e)}'}), 500
+
 @app.route('/api/cliente/<int:id>', methods=['GET'])
 def obtener_cliente(id):
     """Obtiene un cliente por ID"""
@@ -390,11 +679,79 @@ def obtener_cliente(id):
         'cliente': cliente.to_dict()
     })
 
+@app.route('/api/cliente/<int:id>', methods=['PUT'])
+def actualizar_cliente(id):
+    """Actualiza datos de un cliente y mantiene reglas de stock y unicidad"""
+    try:
+        cliente = Cliente.query.get_or_404(id)
+        data = request.get_json() or {}
+
+        if 'cedula' in data:
+            ced = str(data['cedula']).strip()
+            if not ced:
+                return jsonify({'success': False, 'message': 'La cédula es requerida'}), 400
+            existe = Cliente.query.filter(Cliente.cedula == ced, Cliente.id != id).first()
+            if existe:
+                return jsonify({'success': False, 'message': 'Esta cédula ya tiene un premio registrado'}), 400
+            cliente.cedula = ced
+
+        if 'nombres' in data:
+            cliente.nombres = str(data['nombres']).upper()
+        if 'apellidos' in data:
+            cliente.apellidos = str(data['apellidos']).upper()
+        if 'direccion' in data:
+            cliente.direccion = data['direccion']
+        if 'telefono' in data:
+            cliente.telefono = data['telefono']
+        if 'canjeado' in data:
+            cliente.canjeado = bool(data['canjeado'])
+
+        if 'premio' in data and data['premio']:
+            nuevo_nombre = str(data['premio']).strip()
+            if nuevo_nombre != cliente.premio:
+                nuevo_premio = Premio.query.filter_by(nombre=nuevo_nombre, activo=True).first()
+                if not nuevo_premio:
+                    return jsonify({'success': False, 'message': 'Premio no válido'}), 400
+                if nuevo_premio.cantidad_disponible <= 0:
+                    return jsonify({'success': False, 'message': 'No hay unidades disponibles de este premio'}), 400
+                viejo_premio = Premio.query.filter_by(nombre=cliente.premio).first()
+                if viejo_premio:
+                    viejo_premio.cantidad_disponible = viejo_premio.cantidad_disponible + 1
+                nuevo_premio.cantidad_disponible = max(0, nuevo_premio.cantidad_disponible - 1)
+                cliente.premio = nuevo_nombre
+
+        cu = current_user()
+        cliente.updated_at = datetime.utcnow()
+        cliente.updated_by = cu.username if cu else cliente.updated_by
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Cliente actualizado', 'cliente': cliente.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al actualizar cliente: {str(e)}'}), 500
+
+@app.route('/api/cliente/<int:id>', methods=['DELETE'])
+def eliminar_cliente_api(id):
+    """Elimina un cliente y devuelve stock al premio asociado si aplica"""
+    try:
+        cliente = Cliente.query.get_or_404(id)
+        premio = Premio.query.filter_by(nombre=cliente.premio).first()
+        if premio:
+            premio.cantidad_disponible = premio.cantidad_disponible + 1
+        db.session.delete(cliente)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Registro eliminado'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error al eliminar registro: {str(e)}'}), 500
+
 @app.route('/api/canjear/<int:id>', methods=['PUT'])
 def canjear_premio(id):
     """Marca un premio como canjeado"""
     cliente = Cliente.query.get_or_404(id)
     cliente.canjeado = True
+    cu = current_user()
+    cliente.updated_at = datetime.utcnow()
+    cliente.updated_by = cu.username if cu else cliente.updated_by
     db.session.commit()
     
     return jsonify({
@@ -494,12 +851,20 @@ def crear_premio():
                 'message': 'La cantidad disponible no puede ser negativa'
             }), 400
         
+        # Regla: no se puede activar un premio sin stock
+        activo = bool(data.get('activo', True))
+        if activo and cantidad == 0:
+            return jsonify({
+                'success': False,
+                'message': 'No se puede activar un premio sin stock'
+            }), 400
+
         # Crear nuevo premio
         nuevo_premio = Premio(
             nombre=data['nombre'],
             descripcion=data.get('descripcion', ''),
             cantidad_disponible=cantidad,
-            activo=data.get('activo', True)
+            activo=activo
         )
         
         db.session.add(nuevo_premio)
@@ -543,6 +908,9 @@ def actualizar_premio(id):
         if 'descripcion' in data:
             premio.descripcion = data['descripcion']
         
+        # Aplicar cambios y validar reglas
+        nuevo_stock = premio.cantidad_disponible
+        nuevo_activo = premio.activo
         if 'cantidad_disponible' in data:
             cantidad = data['cantidad_disponible']
             if cantidad < 0:
@@ -550,10 +918,19 @@ def actualizar_premio(id):
                     'success': False,
                     'message': 'La cantidad disponible no puede ser negativa'
                 }), 400
-            premio.cantidad_disponible = cantidad
-        
+            nuevo_stock = cantidad
         if 'activo' in data:
-            premio.activo = data['activo']
+            nuevo_activo = data['activo']
+
+        if nuevo_activo and (nuevo_stock <= 0):
+            return jsonify({
+                'success': False,
+                'message': 'No se puede activar un premio sin stock'
+            }), 400
+
+        # Persistir cambios
+        premio.cantidad_disponible = nuevo_stock
+        premio.activo = nuevo_activo
         
         db.session.commit()
         
@@ -608,7 +985,33 @@ def init_db():
         print("✅ Base de datos inicializada correctamente")
 
 init_db()
+ensure_constraints()
 ensure_default_admin()
+
+_constraints_applied = False
+
+@app.before_request
+def _ensure_constraints_once():
+    global _constraints_applied
+    if not _constraints_applied:
+        try:
+            ensure_constraints()
+            _constraints_applied = True
+        except Exception:
+            pass
+
+@app.route('/api/maintenance/ensure-constraints', methods=['POST'])
+@token_required
+def maintenance_ensure_constraints():
+    """Aplica constraints y columnas de auditoría bajo demanda (sólo admin)"""
+    user = current_user()
+    if not user or not user.is_admin:
+        return jsonify({'success': False, 'message': 'No autorizado'}), 403
+    try:
+        ensure_constraints()
+        return jsonify({'success': True, 'message': 'Constraints aplicados'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error al aplicar constraints: {str(e)}'}), 500
 
 if __name__ == '__main__':
     init_db()
