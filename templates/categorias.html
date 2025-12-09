@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Administrativo - Categorías</title>
+    <link rel="stylesheet" href="../assets/css/admin.css">
+    <link rel="stylesheet" href="../assets/css/categorias.css">
+    <link rel="icon" href="../assets/img/logo_4.png" type="image/png">
+</head>
+<body>
+    <div class="admin-header">
+        <h1>Gestión de Categorías</h1>
+        <div class="actions">
+            <input id="cat-search" class="input" placeholder="Buscar categoría...">
+            <button id="cat-refresh" class="btn">Actualizar</button>
+            <button id="cat-new" class="btn btn-primary">Nueva Categoría</button>
+            <a class="btn" href="/admin">Volver al Panel</a>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Descripción</th>
+                    <th>Estado</th>
+                    <th>Fecha Creación</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="cat-tbody"></tbody>
+        </table>
+        <div id="cat-empty" class="empty hidden">Sin categorías</div>
+    </div>
+
+    <div id="cat-modal" class="modal-overlay hidden">
+        <div class="modal qa-modal">
+            <div class="modal-content">
+                <h3 id="cat-modal-title">Nueva Categoría</h3>
+                <div class="form-grid" style="grid-template-columns: 1fr;">
+                    <div class="grid-span">
+                        <label style="display:block; margin-bottom:8px; color:var(--azul);">Nombre</label>
+                        <input id="cm-nombre" class="input" placeholder="Nombre de la categoría" style="width:100%">
+                    </div>
+                    <div class="grid-span">
+                        <label style="display:block; margin-bottom:8px; color:var(--azul);">Descripción</label>
+                        <textarea id="cm-descripcion" class="input" placeholder="Descripción opcional" style="width:100%; min-height:80px;"></textarea>
+                    </div>
+                    <div class="grid-span">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                            <input type="checkbox" id="cm-activa" checked> 
+                            <span style="color:var(--fg);">Activa</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button id="cat-save" class="btn btn-primary">Guardar</button>
+                    <button id="cat-cancel" class="btn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-content">
+                <h3>Confirmar acción</h3>
+                <p id="confirm-message">¿Deseas continuar?</p>
+                <div class="modal-actions">
+                    <button id="confirm-accept" class="btn btn-danger">Confirmar</button>
+                    <button id="confirm-cancel" class="btn">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let categorias = [];
+        let editingId = null;
+        let confirmTargetId = null;
+
+        async function cargarCategorias() {
+            const res = await fetch('/api/categorias');
+            const data = await res.json();
+            categorias = Array.isArray(data.categorias) ? data.categorias : [];
+            renderCategorias();
+        }
+
+        function renderCategorias() {
+            const q = document.getElementById('cat-search').value.toLowerCase();
+            const tbody = document.getElementById('cat-tbody');
+            const empty = document.getElementById('cat-empty');
+            
+            const rows = categorias.filter(c => 
+                !q || 
+                String(c.nombre).toLowerCase().includes(q) || 
+                String(c.descripcion || '').toLowerCase().includes(q)
+            ).map(c => `
+                <tr>
+                    <td><strong>${escapeHtml(c.nombre)}</strong></td>
+                    <td>${escapeHtml(c.descripcion || '-')}</td>
+                    <td>${c.activa 
+                        ? '<span class="badge badge-success">Activa</span>' 
+                        : '<span class="badge badge-inactive">Inactiva</span>'}
+                    </td>
+                    <td>${new Date(c.fecha_creacion).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn" onclick="editCategory(${c.id})">Editar</button>
+                        <button class="btn btn-danger" onclick="deleteCategory(${c.id})">Eliminar</button>
+                    </td>
+                </tr>
+            `);
+
+            tbody.innerHTML = rows.join('');
+            if (rows.length === 0) {
+                empty.classList.remove('hidden');
+            } else {
+                empty.classList.add('hidden');
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s || '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        }
+
+        function openModal(c) {
+            document.getElementById('cat-modal').classList.remove('hidden');
+            document.getElementById('cat-modal-title').textContent = c ? 'Editar Categoría' : 'Nueva Categoría';
+            document.getElementById('cm-nombre').value = c ? c.nombre : '';
+            document.getElementById('cm-descripcion').value = c ? c.descripcion || '' : '';
+            document.getElementById('cm-activa').checked = c ? c.activa : true;
+            editingId = c ? c.id : null;
+            document.body.style.overflow = 'hidden';
+            // Auto focus al nombre
+            setTimeout(() => document.getElementById('cm-nombre').focus(), 100);
+        }
+
+        function closeModal() {
+            document.getElementById('cat-modal').classList.add('hidden');
+            editingId = null;
+            document.body.style.overflow = '';
+        }
+
+        function editCategory(id) {
+            const cat = categorias.find(c => c.id === id);
+            if (cat) openModal(cat);
+        }
+
+        function deleteCategory(id) {
+            confirmTargetId = id;
+            document.getElementById('confirm-message').textContent = '¿Eliminar esta categoría? Si tiene preguntas asociadas no se podrá eliminar.';
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        }
+
+        function closeConfirm() {
+            confirmTargetId = null;
+            document.getElementById('confirm-modal').classList.add('hidden');
+        }
+
+        async function confirmDelete() {
+            if (!confirmTargetId) return;
+            const r = await fetch(`/api/categoria/${confirmTargetId}`, {
+                method: 'DELETE'
+            });
+            const d = await r.json();
+            if (d.success) {
+                showToast('Categoría eliminada', 'success');
+                cargarCategorias();
+            } else {
+                showToast(d.message || 'Error al eliminar', 'error');
+            }
+            closeConfirm();
+        }
+
+        document.getElementById('cat-cancel').addEventListener('click', closeModal);
+        document.getElementById('cat-new').addEventListener('click', () => {
+            editingId = null;
+            openModal(null);
+        });
+        document.getElementById('cat-refresh').addEventListener('click', cargarCategorias);
+        document.getElementById('cat-search').addEventListener('input', renderCategorias);
+        
+        document.getElementById('cat-save').addEventListener('click', async () => {
+            const nombre = document.getElementById('cm-nombre').value.trim();
+            const descripcion = document.getElementById('cm-descripcion').value.trim();
+            const activa = document.getElementById('cm-activa').checked;
+
+            if (!nombre) {
+                showToast('El nombre es requerido', 'error');
+                return;
+            }
+
+            const payload = { nombre, descripcion, activa };
+            let res;
+            
+            if (editingId) {
+                res = await fetch(`/api/categoria/${editingId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                res = await fetch('/api/categoria', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            const d = await res.json();
+            if (d.success) {
+                showToast(editingId ? 'Categoría actualizada' : 'Categoría creada', 'success');
+                closeModal();
+                cargarCategorias();
+            } else {
+                showToast(d.message || 'Error al guardar', 'error');
+            }
+        });
+
+        document.getElementById('confirm-cancel').addEventListener('click', closeConfirm);
+        document.getElementById('confirm-accept').addEventListener('click', confirmDelete);
+
+        function showToast(message, type) {
+            let c = document.getElementById('toast-container');
+            if (!c) {
+                c = document.createElement('div');
+                c.id = 'toast-container';
+                document.body.appendChild(c);
+            }
+            const t = document.createElement('div');
+            t.className = 'toast ' + (type ? 'toast-' + type : '');
+            t.textContent = String(message || '');
+            c.appendChild(t);
+            requestAnimationFrame(() => t.classList.add('visible'));
+            setTimeout(() => {
+                t.classList.remove('visible');
+                setTimeout(() => t.remove(), 250);
+            }, 3000);
+        }
+
+        // Init
+        cargarCategorias();
+    </script>
+</body>
+</html>

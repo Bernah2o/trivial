@@ -212,3 +212,7 @@ tr:hover {
 .toast-success { border-color: var(--verde); }
 .toast-error { border-color: var(--rojo); }
 .toast-info { border-color: var(--azul2); }
+
+.hidden {
+  display: none !important;
+}

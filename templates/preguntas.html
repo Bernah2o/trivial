@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panel Administrativo - Preguntas</title>
+    <link rel="stylesheet" href="../assets/css/admin.css" />
+    <link rel="stylesheet" href="../assets/css/preguntas.css" />
+    <link rel="icon" href="../assets/img/logo_4.png" type="image/png" />
+  </head>
+  <body>
+    <div class="admin-header">
+      <h1>Preguntas y Respuestas</h1>
+      <div class="actions">
+        <input
+          id="q-search"
+          class="input"
+          placeholder="Buscar por texto o categoría"
+        />
+        <button id="q-refresh" class="btn">Actualizar</button>
+        <button id="q-new" class="btn btn-primary">Nueva Pregunta</button>
+        <a class="btn" href="/admin">Volver al Panel</a>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Texto</th>
+            <th>Categoría</th>
+            <th>Dificultad</th>
+            <th>Activa</th>
+            <th>Opciones</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="q-tbody"></tbody>
+      </table>
+      <div id="q-empty" class="empty hidden">Sin preguntas</div>
+    </div>
+
+    <div id="q-modal" class="modal-overlay hidden">
+      <div class="modal qa-modal">
+        <div class="modal-content">
+          <h3 id="q-modal-title">Nueva Pregunta</h3>
+          <div class="form-grid">
+            <textarea
+              id="qm-texto"
+              class="input"
+              placeholder="Texto de la pregunta"
+            ></textarea>
+            <div
+              class="grid-span"
+              style="display: flex; gap: 8px; align-items: center"
+            >
+              <select id="qm-categoria" class="input"></select>
+              <input
+                id="new-cat-name"
+                class="input"
+                placeholder="Nueva categoría"
+                style="max-width: 220px"
+              />
+              <button id="new-cat-create" class="btn">Crear</button>
+            </div>
+            <select id="qm-dificultad" class="input">
+              <option value="">-</option>
+              <option value="facil">Fácil</option>
+              <option value="media">Media</option>
+              <option value="dificil">Difícil</option>
+            </select>
+            <label
+              class="input"
+              style="display: flex; align-items: center; gap: 8px"
+            >
+              <input type="checkbox" id="qm-activa" checked /> Activa
+            </label>
+          </div>
+          <div class="options-box">
+            <div class="options-header">
+              <span>Opciones</span>
+              <button id="opt-add" class="btn">Agregar opción</button>
+            </div>
+            <div id="opt-list"></div>
+          </div>
+          <div class="modal-actions">
+            <button id="q-save" class="btn btn-primary">Guardar</button>
+            <button id="q-cancel" class="btn">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <div class="modal-content">
+          <h3>Confirmar acción</h3>
+          <p id="confirm-message">¿Deseas continuar?</p>
+          <div class="modal-actions">
+            <button id="confirm-accept" class="btn btn-danger">
+              Confirmar
+            </button>
+            <button id="confirm-cancel" class="btn">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let preguntas = [];
+      let editingId = null;
+      let confirmTargetId = null;
+
+      async function cargarPreguntas() {
+        const res = await fetch("/api/preguntas");
+        const data = await res.json();
+        preguntas = Array.isArray(data.preguntas) ? data.preguntas : [];
+        renderPreguntas();
+      }
+
+      function renderPreguntas() {
+        const q = document.getElementById("q-search").value.toLowerCase();
+        const tbody = document.getElementById("q-tbody");
+        const empty = document.getElementById("q-empty");
+        const rows = preguntas
+          .filter(
+            (p) =>
+              !q ||
+              String(p.texto).toLowerCase().includes(q) ||
+              String(p.categoria || "")
+                .toLowerCase()
+                .includes(q)
+          )
+          .map((p) => {
+            const ops = (p.opciones || [])
+              .map(
+                (o) =>
+                  `<div class="opt-row">${
+                    o.correcta
+                      ? '<span class="badge badge-success">✓</span>'
+                      : ""
+                  } ${escapeHtml(o.texto)}</div>`
+              )
+              .join("");
+            return `
+            <tr>
+              <td>${escapeHtml(p.texto)}</td>
+              <td>${escapeHtml(p.categoria || "")}</td>
+              <td>${escapeHtml(p.dificultad || "")}</td>
+              <td>${
+                p.activa
+                  ? '<span class="badge badge-success">Sí</span>'
+                  : '<span class="badge badge-inactive">No</span>'
+              }</td>
+              <td>${ops}</td>
+              <td>
+                <button class="btn" data-action="edit" data-id="${
+                  p.id
+                }">Editar</button>
+                <button class="btn btn-danger" data-action="delete" data-id="${
+                  p.id
+                }">Eliminar</button>
+              </td>
+            </tr>`;
+          });
+        tbody.innerHTML = rows.join("");
+        empty.classList.toggle("hidden", rows.length > 0);
+      }
+
+      function escapeHtml(s) {
+        return String(s || "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            }[c])
+        );
+      }
+
+      function openModal(p) {
+        document.getElementById("q-modal").classList.remove("hidden");
+        document.getElementById("q-modal-title").textContent = p
+          ? "Editar Pregunta"
+          : "Nueva Pregunta";
+        document.body.style.overflow = "hidden";
+        document.getElementById("qm-texto").value = p ? p.texto : "";
+        const list = document.getElementById("opt-list");
+        list.innerHTML = "";
+        const opts = p
+          ? p.opciones || []
+          : [
+              { texto: "", correcta: true },
+              { texto: "", correcta: false },
+            ];
+        for (const o of opts) {
+          addOptRow(o.texto, !!o.correcta);
+        }
+      }
+
+      function closeModal() {
+        document.getElementById("q-modal").classList.add("hidden");
+        editingId = null;
+        document.body.style.overflow = "";
+      }
+
+      function addOptRow(texto, correcta) {
+        const row = document.createElement("div");
+        row.className = "opt-edit-row";
+        row.innerHTML = `
+          <input class="input opt-text" placeholder="Texto de opción" value="${
+            texto ? texto.replace(/"/g, "&quot;") : ""
+          }" />
+          <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" class="opt-correcta" ${
+            correcta ? "checked" : ""
+          }/> Correcta</label>
+          <button class="btn btn-danger opt-del">Eliminar</button>`;
+        row.querySelector(".opt-del").addEventListener("click", () => {
+          row.remove();
+        });
+        document.getElementById("opt-list").appendChild(row);
+      }
+
+      document
+        .getElementById("opt-add")
+        .addEventListener("click", () => addOptRow("", false));
+      document.getElementById("q-cancel").addEventListener("click", closeModal);
+      document.getElementById("q-new").addEventListener("click", async () => {
+        editingId = null;
+        openModal(null);
+        await cargarCategorias();
+      });
+      document
+        .getElementById("q-refresh")
+        .addEventListener("click", cargarPreguntas);
+      document
+        .getElementById("q-search")
+        .addEventListener("input", renderPreguntas);
+
+      async function cargarCategorias() {
+        const r = await fetch("/api/categorias?activa=true");
+        const d = await r.json();
+        const sel = document.getElementById("qm-categoria");
+        const opts = (d.categorias || []).map(
+          (c) => `<option value="${c.id}">${c.nombre}</option>`
+        );
+        sel.innerHTML = opts.join("");
+      }
+
+      document
+        .getElementById("new-cat-create")
+        .addEventListener("click", async () => {
+          const name = document.getElementById("new-cat-name").value.trim();
+          if (!name) {
+            showToast("Nombre requerido", "error");
+            return;
+          }
+          const r = await fetch("/api/categoria", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nombre: name, activa: true }),
+          });
+          const d = await r.json();
+          if (d.success) {
+            document.getElementById("new-cat-name").value = "";
+            await cargarCategorias();
+            const sel = document.getElementById("qm-categoria");
+            sel.value = d.categoria.id;
+          } else {
+            showToast(d.message || "Error al crear categoría", "error");
+          }
+        });
+
+      document.getElementById("q-save").addEventListener("click", async () => {
+        const texto = document.getElementById("qm-texto").value;
+        const categoria_id = parseInt(
+          document.getElementById("qm-categoria").value,
+          10
+        );
+        const dificultad = document.getElementById("qm-dificultad").value;
+        const activa = document.getElementById("qm-activa").checked;
+        const ops = Array.from(
+          document.querySelectorAll("#opt-list .opt-edit-row")
+        ).map((r) => ({
+          texto: r.querySelector(".opt-text").value,
+          correcta: r.querySelector(".opt-correcta").checked,
+        }));
+        if (!ops.length || !ops.some((o) => o.correcta)) {
+          showToast("Debe incluir al menos una opción correcta", "error");
+          return;
+        }
+        const payload = {
+          texto,
+          categoria_id,
+          dificultad,
+          activa,
+          opciones: ops,
+        };
+        let res;
+        if (editingId) {
+          res = await fetch(`/api/pregunta/${editingId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } else {
+          res = await fetch("/api/pregunta", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+        const d = await res.json();
+        if (d.success) {
+          closeModal();
+          cargarPreguntas();
+        } else {
+          showToast(d.message || "Error", "error");
+        }
+      });
+
+      document
+        .getElementById("q-tbody")
+        .addEventListener("click", async (e) => {
+          const btn = e.target.closest("button[data-action]");
+          if (!btn) return;
+          const id = btn.getAttribute("data-id");
+          const action = btn.getAttribute("data-action");
+          if (action === "edit") {
+            const r = await fetch(`/api/pregunta/${id}`);
+            const d = await r.json();
+            editingId = id;
+            openModal(d.pregunta);
+            await cargarCategorias();
+            const sel = document.getElementById("qm-categoria");
+            if (d.pregunta && d.pregunta.categoria_id) {
+              sel.value = d.pregunta.categoria_id;
+            }
+          } else if (action === "delete") {
+            openConfirmDelete(id);
+          }
+        });
+
+      function openConfirmDelete(id) {
+        confirmTargetId = id;
+        document.getElementById("confirm-message").textContent =
+          "¿Eliminar esta pregunta? Esta acción no se puede deshacer.";
+        document.getElementById("confirm-modal").classList.remove("hidden");
+      }
+      function closeConfirm() {
+        confirmTargetId = null;
+        document.getElementById("confirm-modal").classList.add("hidden");
+      }
+      async function confirmDelete() {
+        if (!confirmTargetId) return;
+        const r = await fetch(`/api/pregunta/${confirmTargetId}`, {
+          method: "DELETE",
+        });
+        const d = await r.json();
+        if (d.success) {
+          showToast("Pregunta eliminada", "success");
+          cargarPreguntas();
+        } else {
+          showToast(d.message || "Error al eliminar", "error");
+        }
+        closeConfirm();
+      }
+      document
+        .getElementById("confirm-cancel")
+        .addEventListener("click", closeConfirm);
+      document
+        .getElementById("confirm-accept")
+        .addEventListener("click", confirmDelete);
+
+      function showToast(message, type) {
+        let c = document.getElementById("toast-container");
+        if (!c) {
+          c = document.createElement("div");
+          c.id = "toast-container";
+          document.body.appendChild(c);
+        }
+        const t = document.createElement("div");
+        t.className = "toast " + (type ? "toast-" + type : "");
+        t.textContent = String(message || "");
+        c.appendChild(t);
+        requestAnimationFrame(() => t.classList.add("visible"));
+        setTimeout(() => {
+          t.classList.remove("visible");
+          setTimeout(() => t.remove(), 250);
+        }, 3000);
+      }
+
+      cargarPreguntas();
+      cargarCategorias();
+    </script>
+  </body>
+</html>

@@ -117,6 +117,29 @@
           </button>
         </form>
 
+        <div class="share-box" id="share-box">
+          <div class="form-group" style="margin-top: 16px">
+            <label for="whatsapp_message">Mensaje de WhatsApp</label>
+            <textarea
+              id="whatsapp_message"
+              rows="4"
+              placeholder="Mensaje institucional + datos del premio"
+            ></textarea>
+          </div>
+          <div
+            class="form-group"
+            style="display: flex; align-items: center; gap: 10px"
+          >
+            <input type="checkbox" id="share_on_submit" />
+            <label for="share_on_submit" style="margin: 0"
+              >Compartir por WhatsApp al registrar</label
+            >
+          </div>
+          <button type="button" class="btn" id="share-btn">
+            Enviar por WhatsApp
+          </button>
+        </div>
+
         <a href="/" class="back-link">← Volver al juego</a>
       </div>
     </div>
@@ -132,6 +155,9 @@
         document.getElementById("premio").value = premio;
         document.getElementById("codigo-display").textContent = codigo;
         document.getElementById("premio-display").textContent = premio;
+
+        const defaultMsg = buildWhatsAppMessage(premio, codigo);
+        document.getElementById("whatsapp_message").value = defaultMsg;
       } else {
         showAlert(
           "No se encontró información del premio. Por favor, juega primero para obtener un código.",
@@ -177,6 +203,14 @@
               );
               document.getElementById("registro-form").reset();
 
+              const autoShare =
+                document.getElementById("share_on_submit").checked;
+              if (autoShare) {
+                try {
+                  sendWhatsApp();
+                } catch (e) {}
+              }
+
               setTimeout(() => {
                 window.location.href = "/";
               }, 3000);
@@ -213,6 +247,264 @@
           }, 5000);
         }
       }
+
+      // WhatsApp helpers
+      function buildWhatsAppMessage(premio, codigo) {
+        return (
+          "DH2OCOL - Cuidamos tu agua, cuidamos tu salud\n" +
+          "Has obtenido un premio: " +
+          premio +
+          "\n" +
+          "Código: " +
+          codigo +
+          "\n" +
+          "Validez del premio: Entre 15 y 30 días calendario\n" +
+          "Para canjear, presenta este código en nuestras oficinas.\n" +
+          "Gracias por participar."
+        );
+      }
+
+      function normalizePhone(raw) {
+        const digits = String(raw || "").replace(/\D/g, "");
+        if (!digits) return "";
+        // Si es un móvil colombiano de 10 dígitos, anteponer 57
+        if (digits.length === 10 && digits.startsWith("3"))
+          return "57" + digits;
+        // Si empieza con 57 y tiene 12 dígitos, usar tal cual
+        if (digits.length === 12 && digits.startsWith("57")) return digits;
+        // En otros casos, devolver tal cual para intentar
+        return digits;
+      }
+
+      function sendWhatsApp() {
+        const telInput = document.getElementById("telefono");
+        const msgInput = document.getElementById("whatsapp_message");
+        const phone = normalizePhone(telInput.value);
+        const text =
+          msgInput.value ||
+          buildWhatsAppMessage(
+            document.getElementById("premio").value,
+            document.getElementById("codigo_premio").value
+          );
+        if (!phone) {
+          showAlert("Número de teléfono inválido para WhatsApp.", "error");
+          return;
+        }
+        const url =
+          "https://wa.me/" + phone + "?text=" + encodeURIComponent(text);
+        window.open(url, "_blank");
+      }
+
+      document
+        .getElementById("share-btn")
+        .addEventListener("click", sendWhatsApp);
+
+      const ganadoresBox = document.createElement("div");
+      ganadoresBox.className = "winners-box";
+      ganadoresBox.innerHTML = `
+        <div class="winners-header">
+          <h2>Listado de Ganadores</h2>
+          <div class="winners-actions">
+            <input id="winner-search" class="input" placeholder="Buscar por código, cédula o nombre..." />
+            <button id="winner-refresh" class="btn">Actualizar</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="table winners-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Cédula</th>
+                <th>Nombre Completo</th>
+                <th>Teléfono</th>
+                <th>Premio</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="winners-tbody"></tbody>
+          </table>
+          <div id="winners-empty" class="empty hidden">Sin registros</div>
+        </div>
+        <div id="winner-modal" class="modal hidden">
+          <div class="modal-content">
+            <h3>Editar Registro</h3>
+            <div class="form-grid">
+              <input id="wm-cedula" class="input" placeholder="Cédula" />
+              <input id="wm-nombres" class="input" placeholder="Nombres" />
+              <input id="wm-apellidos" class="input" placeholder="Apellidos" />
+              <input id="wm-telefono" class="input" placeholder="Teléfono" />
+              <input id="wm-direccion" class="input" placeholder="Dirección" />
+              <select id="wm-premio" class="input"></select>
+            </div>
+            <div class="modal-actions">
+              <button id="wm-save" class="btn btn-primary">Guardar</button>
+              <button id="wm-cancel" class="btn">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.querySelector(".container").appendChild(ganadoresBox);
+
+      let winners = [];
+      let editingId = null;
+
+      async function cargarGanadores() {
+        const res = await fetch("/api/clientes");
+        const data = await res.json();
+        winners = Array.isArray(data.clientes) ? data.clientes : [];
+        renderGanadores();
+      }
+
+      function renderGanadores() {
+        const q = document.getElementById("winner-search").value.toLowerCase();
+        const tbody = document.getElementById("winners-tbody");
+        const empty = document.getElementById("winners-empty");
+        const rows = winners
+          .filter(
+            (c) =>
+              !q ||
+              String(c.codigo_premio).toLowerCase().includes(q) ||
+              String(c.cedula).toLowerCase().includes(q) ||
+              (
+                String(c.nombres).toLowerCase() +
+                " " +
+                String(c.apellidos).toLowerCase()
+              ).includes(q)
+          )
+          .map((c) => {
+            const estado = c.canjeado
+              ? '<span class="badge badge-success">✓ Canjeado</span>'
+              : '<span class="badge badge-pending">⏳ Pendiente</span>';
+            const acciones = c.canjeado
+              ? "-"
+              : `<button class="btn btn-green" data-action="canjear" data-id="${c.id}">Marcar Canjeado</button>`;
+            return `
+              <tr>
+                <td class="code">${c.codigo_premio}</td>
+                <td>${c.cedula}</td>
+                <td>${c.nombres} ${c.apellidos}</td>
+                <td>${c.telefono || ""}</td>
+                <td>${c.premio || ""}</td>
+                <td>${formatFecha(c.fecha_registro)}</td>
+                <td>${estado}</td>
+                <td>
+                  <button class="btn" data-action="edit" data-id="${
+                    c.id
+                  }">Editar</button>
+                  <button class="btn btn-danger" data-action="delete" data-id="${
+                    c.id
+                  }">Eliminar</button>
+                  ${acciones}
+                </td>
+              </tr>
+            `;
+          });
+        tbody.innerHTML = rows.join("");
+        empty.classList.toggle("hidden", rows.length > 0);
+      }
+
+      function formatFecha(iso) {
+        if (!iso) return "";
+        try {
+          return new Date(iso).toLocaleString();
+        } catch {
+          return iso;
+        }
+      }
+
+      document
+        .getElementById("winner-search")
+        .addEventListener("input", renderGanadores);
+      document
+        .getElementById("winner-refresh")
+        .addEventListener("click", cargarGanadores);
+      document
+        .getElementById("winners-tbody")
+        .addEventListener("click", async (e) => {
+          const btn = e.target.closest("button[data-action]");
+          if (!btn) return;
+          const id = btn.getAttribute("data-id");
+          const action = btn.getAttribute("data-action");
+          if (action === "edit") {
+            const res = await fetch(`/api/cliente/${id}`);
+            const d = await res.json();
+            const c = d.cliente;
+            editingId = id;
+            document.getElementById("wm-cedula").value = c.cedula || "";
+            document.getElementById("wm-nombres").value = c.nombres || "";
+            document.getElementById("wm-apellidos").value = c.apellidos || "";
+            document.getElementById("wm-telefono").value = c.telefono || "";
+            document.getElementById("wm-direccion").value = c.direccion || "";
+            await cargarPremiosSelect(c.premio);
+            document.getElementById("winner-modal").classList.remove("hidden");
+          } else if (action === "delete") {
+            if (!confirm("¿Eliminar registro?")) return;
+            const res = await fetch(`/api/cliente/${id}`, { method: "DELETE" });
+            const d = await res.json();
+            if (d.success) {
+              showAlert("Registro eliminado", "success");
+              cargarGanadores();
+            } else {
+              showAlert(d.message || "Error al eliminar", "error");
+            }
+          } else if (action === "canjear") {
+            if (!confirm("¿Marcar como canjeado?")) return;
+            const res = await fetch(`/api/canjear/${id}`, { method: "PUT" });
+            const d = await res.json();
+            if (d.success) {
+              showAlert("Marcado como canjeado", "success");
+              cargarGanadores();
+            } else {
+              showAlert(d.message || "Error al canjear", "error");
+            }
+          }
+        });
+
+      async function cargarPremiosSelect(actual) {
+        const res = await fetch("/api/premios");
+        const data = await res.json();
+        const sel = document.getElementById("wm-premio");
+        const options = (data.premios || []).map(
+          (p) =>
+            `<option value="${p.nombre}" ${
+              p.nombre === actual ? "selected" : ""
+            }>${p.nombre} (${p.cantidad_disponible})</option>`
+        );
+        sel.innerHTML = options.join("");
+      }
+
+      document.getElementById("wm-cancel").addEventListener("click", () => {
+        document.getElementById("winner-modal").classList.add("hidden");
+        editingId = null;
+      });
+      document.getElementById("wm-save").addEventListener("click", async () => {
+        if (!editingId) return;
+        const payload = {
+          cedula: document.getElementById("wm-cedula").value,
+          nombres: document.getElementById("wm-nombres").value,
+          apellidos: document.getElementById("wm-apellidos").value,
+          telefono: document.getElementById("wm-telefono").value,
+          direccion: document.getElementById("wm-direccion").value,
+          premio: document.getElementById("wm-premio").value,
+        };
+        const res = await fetch(`/api/cliente/${editingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const d = await res.json();
+        if (d.success) {
+          showAlert("Registro actualizado", "success");
+          document.getElementById("winner-modal").classList.add("hidden");
+          cargarGanadores();
+        } else {
+          showAlert(d.message || "Error al actualizar", "error");
+        }
+      });
+
+      cargarGanadores();
     </script>
   </body>
 </html>

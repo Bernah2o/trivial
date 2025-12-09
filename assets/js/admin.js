@@ -84,21 +84,113 @@ function renderizarClientes(clientesData) {
       tr.appendChild(tdEstado);
 
       const tdAcciones = document.createElement("td");
+      tdAcciones.style.display = "flex";
+      tdAcciones.style.gap = "8px";
+      
+      // Botón Editar
+      const btnEdit = document.createElement("button");
+      btnEdit.className = "btn";
+      btnEdit.style.fontSize = "12px";
+      btnEdit.style.padding = "4px 8px";
+      btnEdit.textContent = "✏️";
+      btnEdit.title = "Editar Cliente";
+      btnEdit.addEventListener("click", () => editarCliente(cliente));
+      tdAcciones.appendChild(btnEdit);
+
+      // Botón Eliminar
+      const btnDel = document.createElement("button");
+      btnDel.className = "btn btn-danger";
+      btnDel.style.fontSize = "12px";
+      btnDel.style.padding = "4px 8px";
+      btnDel.textContent = "🗑️";
+      btnDel.title = "Eliminar Cliente";
+      btnDel.addEventListener("click", () => eliminarCliente(cliente.id));
+      tdAcciones.appendChild(btnDel);
+
       if (!cliente.canjeado) {
-        const btn = document.createElement("button");
-        btn.className = "action-btn";
-        btn.textContent = "Marcar Canjeado";
-        btn.addEventListener("click", () => canjearPremio(cliente.id));
-        tdAcciones.appendChild(btn);
-      } else {
-        const dash = document.createElement("span");
-        dash.style.opacity = "0.5";
-        dash.textContent = "-";
-        tdAcciones.appendChild(dash);
+        const btnCanje = document.createElement("button");
+        btnCanje.className = "action-btn";
+        btnCanje.textContent = "Canjear";
+        btnCanje.title = "Marcar como Canjeado";
+        btnCanje.addEventListener("click", () => canjearPremio(cliente.id));
+        tdAcciones.appendChild(btnCanje);
       }
+      
       tr.appendChild(tdAcciones);
       tbody.appendChild(tr);
     });
+  }
+}
+
+let editingClientId = null;
+
+function editarCliente(cliente) {
+  editingClientId = cliente.id;
+  document.getElementById("client-modal-title").textContent = "Editar Cliente";
+  document.getElementById("cm-nombres").value = cliente.nombres;
+  document.getElementById("cm-apellidos").value = cliente.apellidos;
+  document.getElementById("cm-cedula").value = cliente.cedula;
+  document.getElementById("cm-telefono").value = cliente.telefono;
+  document.getElementById("cm-direccion").value = cliente.direccion;
+  
+  document.getElementById("client-modal").classList.remove("hidden");
+}
+
+document.getElementById("client-cancel").addEventListener("click", () => {
+  document.getElementById("client-modal").classList.add("hidden");
+  editingClientId = null;
+});
+
+document.getElementById("client-save").addEventListener("click", async () => {
+    if(!editingClientId) return;
+    
+    const payload = {
+        nombres: document.getElementById("cm-nombres").value,
+        apellidos: document.getElementById("cm-apellidos").value,
+        cedula: document.getElementById("cm-cedula").value,
+        telefono: document.getElementById("cm-telefono").value,
+        direccion: document.getElementById("cm-direccion").value
+    };
+    
+    try {
+        const res = await fetch(`/api/cliente/${editingClientId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if(data.success) {
+            showToast("Cliente actualizado", "success");
+            document.getElementById("client-modal").classList.add("hidden");
+            cargarClientes();
+        } else {
+            showToast(data.message || "Error al actualizar", "error");
+        }
+    } catch(e) {
+        showToast("Error de conexión", "error");
+    }
+});
+
+async function eliminarCliente(id) {
+  const ok = await confirmModal("¿Eliminar este registro? Esta acción es irreversible y devolverá el premio al inventario si aplica.", {
+    okText: "Eliminar",
+    cancelText: "Cancelar",
+    title: "Eliminar Cliente"
+  });
+  if (!ok) return;
+  
+  try {
+      const res = await fetch(`/api/cliente/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if(data.success) {
+          showToast("Registro eliminado", "success");
+          cargarClientes();
+          cargarEstadisticas();
+      } else {
+          showToast(data.message || "Error al eliminar", "error");
+      }
+  } catch(e) {
+      showToast("Error al eliminar", "error");
   }
 }
 
@@ -314,50 +406,46 @@ function exportarExcel() {
     });
     return;
   }
-  const headers = [
-    "Código",
-    "Cédula",
-    "Nombres",
-    "Apellidos",
-    "Dirección",
-    "Teléfono",
-    "Premio",
-    "Fecha",
-    "Canjeado",
+
+  // Preparar datos para SheetJS
+  const data = clientes.map((c) => ({
+    "Código": safe(c.codigo_premio),
+    "Cédula": safe(c.cedula),
+    "Nombres": safe(c.nombres),
+    "Apellidos": safe(c.apellidos),
+    "Dirección": safe(c.direccion),
+    "Teléfono": safe(c.telefono),
+    "Premio": safe(c.premio),
+    "Fecha": formatDate(c.fecha_registro),
+    "Estado": c.canjeado ? "Canjeado" : "Pendiente"
+  }));
+
+  // Crear libro y hoja
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Clientes");
+
+  // Ajustar ancho de columnas (opcional pero recomendado)
+  const colWidths = [
+    { wch: 20 }, // Código
+    { wch: 15 }, // Cédula
+    { wch: 25 }, // Nombres
+    { wch: 25 }, // Apellidos
+    { wch: 30 }, // Dirección
+    { wch: 15 }, // Teléfono
+    { wch: 20 }, // Premio
+    { wch: 20 }, // Fecha
+    { wch: 15 }  // Estado
   ];
-  const rows = clientes.map((c) => [
-    safe(c.codigo_premio),
-    safe(c.cedula),
-    safe(c.nombres),
-    safe(c.apellidos),
-    safe(c.direccion),
-    safe(c.telefono),
-    safe(c.premio),
-    formatDate(c.fecha_registro),
-    c.canjeado ? "Sí" : "No",
-  ]);
-  let html =
-    '<html><head><meta charset="UTF-8"></head><body><table border="1"><thead><tr>' +
-    headers.map((h) => "<th>" + escapeHtml(h) + "</th>").join("") +
-    "</tr></thead><tbody>";
-  rows.forEach((row) => {
-    html +=
-      "<tr>" +
-      row
-        .map((field) => "<td>" + escapeHtml(String(field)) + "</td>")
-        .join("") +
-      "</tr>";
-  });
-  html += "</tbody></table></body></html>";
-  const blob = new Blob([html], {
-    type: "application/vnd.ms-excel;charset=utf-8;",
-  });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download =
-    "premios_DH2OCOL_" + new Date().toISOString().split("T")[0] + ".xls";
-  link.click();
-  showToast("Excel exportado", "success");
+  ws['!cols'] = colWidths;
+
+  // Generar nombre de archivo
+  const fecha = new Date().toISOString().split("T")[0];
+  const filename = `premios_DH2OCOL_${fecha}.xlsx`;
+
+  // Descargar
+  XLSX.writeFile(wb, filename);
+  showToast("Excel exportado correctamente", "success");
 }
 
 function showToast(message, type) {

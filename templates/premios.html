@@ -183,9 +183,11 @@
                     <td>${premio.cantidad_disponible}</td>
                     <td>
                         ${
-                          premio.activo
-                            ? '<span class="badge badge-success">✓ Activo</span>'
-                            : '<span class="badge badge-inactive">✗ Inactivo</span>'
+                          premio.cantidad_disponible === 0
+                            ? '<span class="badge badge-inactive">Sin stock</span>'
+                            : (premio.activo
+                              ? '<span class="badge badge-success">✓ Activo</span>'
+                              : '<span class="badge badge-inactive">✗ Inactivo</span>')
                         }
                     </td>
                     <td>${new Date(premio.fecha_creacion).toLocaleDateString(
