@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Configuración Ruleta - DH2OCOL</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <link rel="icon" href="../assets/img/logo_4.png" type="image/png">
+    <link rel="stylesheet" href="../assets/css/config_ruleta.css">
+
+</head>
+<body>
+    <div class="admin-container">
+        <header class="admin-header">
+            <div>
+                <h1>🎡 Configuración Ruleta</h1>
+                <p>Gestiona los segmentos de premios y texto de la ruleta</p>
+            </div>
+            <div>
+                <a href="/admin" class="btn btn-secondary">← Volver al Admin</a>
+                <button onclick="logout()" class="btn btn-secondary">Cerrar Sesión</button>
+            </div>
+        </header>
+
+        <div style="display: flex; gap: 30px; flex-wrap: wrap; align-items: flex-start;">
+            <!-- Lista de Configuración -->
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Texto</th>
+                            <th>Tipo</th>
+                            <th>Color</th>
+                            <th>Activo</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="config-list">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Formulario -->
+            <div class="form-wrapper">
+                <div class="form-card">
+                    <h3 id="form-title">✨ Nuevo Segmento</h3>
+                    <form id="config-form">
+                        <input type="hidden" id="config-id">
+                        <div class="form-group">
+                            <label>Texto (máx 15 chars)</label>
+                            <input type="text" id="texto" maxlength="15" required placeholder="Ej: Gira de nuevo">
+                        </div>
+                        <div class="form-group">
+                            <label>Tipo de Segmento</label>
+                            <select id="tipo" required>
+                                <option value="premio">🎁 Premio/Sorpresa</option>
+                                <option value="retry">🔄 Reintentar (Gira otra vez)</option>
+                                <option value="question">❓ Pregunta (Texto fijo)</option>
+                            </select>
+                            <small style="color:var(--text-secondary); opacity: 0.7; font-size: 0.8rem; display: block; margin-top: 5px;">
+                                ℹ️ Las categorías de preguntas activas se agregan automáticamente.
+                            </small>
+                        </div>
+                        <div class="form-group">
+                            <label>Color del Segmento</label>
+                            <input type="color" id="color" value="#00C6FF">
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-wrapper">
+                                <input type="checkbox" id="activo" checked> 
+                                <span>Visible en la ruleta</span>
+                            </label>
+                        </div>
+                        <div style="display: flex; gap: 15px; margin-top: 2rem;">
+                            <button type="submit" class="btn btn-primary" style="flex: 1;">Guardar Cambios</button>
+                            <button type="button" class="btn btn-secondary" onclick="resetForm()">Cancelar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Delete Confirmation Modal -->
+    <div id="delete-modal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="modal-icon">🗑️</span>
+            <h3 class="modal-title">¿Eliminar Segmento?</h3>
+            <p class="modal-text">Esta acción no se puede deshacer. ¿Estás seguro de continuar?</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+                <button class="btn btn-confirm" id="confirm-delete-btn">Sí, Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let deleteId = null;
+
+        // Check auth
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/verify');
+                if (res.status !== 200) window.location.href = '/login';
+                loadConfig();
+            } catch (e) {
+                window.location.href = '/login';
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/ruleta-config');
+                const data = await res.json();
+                if (data.success) {
+                    renderTable(data.config);
+                }
+            } catch (e) {
+                console.error("Error cargando configuración", e);
+            }
+        }
+
+        function renderTable(configs) {
+            const tbody = document.getElementById('config-list');
+            tbody.innerHTML = '';
+            
+            configs.forEach(c => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <span style="font-weight: 500;">${c.texto}</span>
+                    </td>
+                    <td>
+                        <span class="badge badge-${c.tipo}">
+                            ${c.tipo.toUpperCase()}
+                        </span>
+                    </td>
+                    <td><div class="color-preview" style="background-color: ${c.color}"></div> <span style="font-family: monospace; opacity: 0.8;">${c.color}</span></td>
+                    <td>${c.activo ? '<span style="color:#00b894">● Activo</span>' : '<span style="color:#ff7675">● Inactivo</span>'}</td>
+                    <td>
+                        <button onclick='editConfig(${JSON.stringify(c)})' class="btn-icon btn-edit" title="Editar">✏️</button>
+                        <button onclick='confirmDelete(${c.id})' class="btn-icon btn-delete" title="Eliminar">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('config-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('config-id').value;
+            const data = {
+                texto: document.getElementById('texto').value,
+                tipo: document.getElementById('tipo').value,
+                color: document.getElementById('color').value,
+                activo: document.getElementById('activo').checked,
+                probabilidad: 1
+            };
+
+            const url = id ? `/api/ruleta-config/${id}` : '/api/ruleta-config';
+            const method = id ? 'PUT' : 'POST';
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.success) {
+                    loadConfig();
+                    resetForm();
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        });
+
+        function editConfig(c) {
+            document.getElementById('form-title').textContent = '✏️ Editar Segmento';
+            document.getElementById('config-id').value = c.id;
+            document.getElementById('texto').value = c.texto;
+            document.getElementById('tipo').value = c.tipo;
+            document.getElementById('color').value = c.color;
+            document.getElementById('activo').checked = c.activo;
+        }
+
+        function confirmDelete(id) {
+            deleteId = id;
+            const modal = document.getElementById('delete-modal');
+            modal.style.display = 'flex'; // Ensure display is flex before opacity transition
+            // Small delay to allow display change to register before class change
+            setTimeout(() => {
+                modal.classList.add('active');
+            }, 10);
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('delete-modal');
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300); // Match transition duration
+            deleteId = null;
+        }
+
+        document.getElementById('confirm-delete-btn').addEventListener('click', () => {
+            if (deleteId) {
+                fetch(`/api/ruleta-config/${deleteId}`, { method: 'DELETE' })
+                    .then(r => r.json())
+                    .then(d => {
+                        if(d.success) loadConfig();
+                        else alert(d.message);
+                        closeModal();
+                    });
+            }
+        });
+
+        function resetForm() {
+            document.getElementById('form-title').textContent = '✨ Nuevo Segmento';
+            document.getElementById('config-form').reset();
+            document.getElementById('config-id').value = '';
+        }
+
+        function logout() {
+            fetch('/api/logout', { method: 'POST' })
+                .then(() => window.location.href = '/login');
+        }
+
+        checkAuth();
+    </script>
+</body>
+</html>

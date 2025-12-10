@@ -1467,13 +1467,13 @@ function toggleFullscreen() {
 // ==================== START ====================
 // ==================== WHEEL LOGIC ====================
 
-function startWheelMode() {
+async function startWheelMode() {
     setScreen("wheel");
-    initWheel();
+    await initWheel();
 }
 
-function initWheel() {
-    // Definir segmentos basados en categorías o premios
+async function initWheel() {
+    // Definir segmentos
     state.wheelSegments = [];
     
     // 1. Agregar categorías de preguntas disponibles
@@ -1482,20 +1482,42 @@ function initWheel() {
             const label = p.nombre || "Pregunta";
             state.wheelSegments.push({ 
                 type: 'question', 
-                text: label.substring(0, 15), // Limitar longitud
+                text: label.substring(0, 15), 
                 data: p, 
-                color: getRandomColor() 
+                color: getRandomColor()
             });
         });
     }
 
-    // 2. Agregar segmentos de "Variedad" para hacer la ruleta más interesante
-    const extraSegments = [
-        { type: 'prize', text: '🎁 PREMIO', color: '#FFD700' },
-        { type: 'retry', text: 'Gira Otra Vez', color: '#4CAF50' },
-        { type: 'prize', text: '🏆 SORPRESA', color: '#FF9800' }, 
-        { type: 'retry', text: 'Intenta Nuevo', color: '#2196F3' }
-    ];
+    // 2. Fetch de configuración dinámica
+    let extraSegments = [];
+    try {
+        const res = await fetch("/api/public/ruleta-config");
+        const data = await res.json();
+        if (data.success && data.config.length > 0) {
+            extraSegments = data.config.map(c => ({
+                type: c.tipo,
+                text: c.texto,
+                color: c.color
+            }));
+        } else {
+             // Fallback default
+             extraSegments = [
+                { type: 'prize', text: '🎁 PREMIO', color: '#FFD700' },
+                { type: 'retry', text: 'Gira Otra Vez', color: '#4CAF50' },
+                { type: 'prize', text: '🏆 SORPRESA', color: '#FF9800' }, 
+                { type: 'retry', text: 'Intenta Nuevo', color: '#2196F3' }
+            ];
+        }
+    } catch (e) {
+        console.error("Error cargando config ruleta", e);
+        // Fallback default
+         extraSegments = [
+            { type: 'prize', text: '🎁 PREMIO', color: '#FFD700' },
+            { type: 'retry', text: 'Gira Otra Vez', color: '#4CAF50' },
+            { type: 'prize', text: '🏆 SORPRESA', color: '#FF9800' }
+        ];
+    }
 
     // Mezclar y agregar extras
     extraSegments.forEach(seg => {
@@ -1505,7 +1527,7 @@ function initWheel() {
     // 3. Si aún hay pocos segmentos (menos de 8), duplicar existentes
     // Priorizar duplicar PREMIO y Categorías
     while (state.wheelSegments.length < 8) {
-         const original = state.wheelSegments[state.wheelSegments.length % 2]; // Alternar entre los primeros
+         const original = state.wheelSegments[state.wheelSegments.length % 2]; 
          state.wheelSegments.push({ ...original, color: getRandomColor() });
     }
 

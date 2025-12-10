@@ -160,6 +160,25 @@ class Opcion(db.Model):
             'correcta': self.correcta,
             'pregunta_id': self.pregunta_id
         }
+
+class ConfiguracionRuleta(db.Model):
+    __tablename__ = 'configuracion_ruleta'
+    id = db.Column(db.Integer, primary_key=True)
+    texto = db.Column(db.String(50), nullable=False)
+    tipo = db.Column(db.String(20), nullable=False) # 'premio', 'retry', 'question'
+    color = db.Column(db.String(20), nullable=False)
+    probabilidad = db.Column(db.Integer, default=1) # Peso para probabilidad (opcional para futuro)
+    activo = db.Column(db.Boolean, default=True)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'texto': self.texto,
+            'tipo': self.tipo,
+            'color': self.color,
+            'probabilidad': self.probabilidad,
+            'activo': self.activo
+        }
 class User(db.Model):
     __tablename__ = 'users'
     
@@ -201,7 +220,30 @@ def ensure_constraints():
                 db.session.execute(db.text("ALTER TABLE preguntas ADD COLUMN categoria_id INTEGER"))
             # Crear índice único en nombre de categorías
             db.session.execute(db.text("CREATE UNIQUE INDEX IF NOT EXISTS idx_categorias_nombre_unique ON categorias (nombre)"))
+            # Ruleta config table
+            db.session.execute(db.text("""
+                CREATE TABLE IF NOT EXISTS configuracion_ruleta (
+                    id SERIAL PRIMARY KEY,
+                    texto VARCHAR(50) NOT NULL,
+                    tipo VARCHAR(20) NOT NULL,
+                    color VARCHAR(20) NOT NULL,
+                    probabilidad INTEGER DEFAULT 1,
+                    activo BOOLEAN DEFAULT TRUE
+                )
+            """))
             db.session.commit()
+            
+            # Default ruleta segments if empty
+            if ConfiguracionRuleta.query.count() == 0:
+                defaults = [
+                    {'texto': '🎁 PREMIO', 'tipo': 'premio', 'color': '#FFD700'},
+                    {'texto': 'Gira Otra Vez', 'tipo': 'retry', 'color': '#4CAF50'},
+                    {'texto': '🏆 SORPRESA', 'tipo': 'premio', 'color': '#FF9800'},
+                    {'texto': 'Intenta Nuevo', 'tipo': 'retry', 'color': '#2196F3'}
+                ]
+                for d in defaults:
+                    db.session.add(ConfiguracionRuleta(**d))
+                db.session.commit()
     except Exception as e:
         try:
             db.session.rollback()
@@ -326,6 +368,11 @@ def preguntas_page():
 @token_required
 def categorias_page():
     return render_template('categorias.html')
+
+@app.route('/config-ruleta')
+@token_required
+def config_ruleta_page():
+    return render_template('config_ruleta.html')
 
 
 
@@ -516,27 +563,34 @@ def listar_preguntas():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     
-    q = Pregunta.query
-    if activa_param is not None:
-        active = str(activa_param).lower() == 'true'
-        q = q.filter_by(activa=active)
-    
-    if categoria_id_param:
-        try:
-            cat_id = int(categoria_id_param)
-            q = q.filter_by(categoria_id=cat_id)
-        except ValueError:
-            pass # Ignorar si no es nmero
+    try:
+        q = Pregunta.query
+        if activa_param is not None:
+            active = str(activa_param).lower() == 'true'
+            q = q.filter_by(activa=active)
+        
+        if categoria_id_param:
+            try:
+                cat_id = int(categoria_id_param)
+                q = q.filter_by(categoria_id=cat_id)
+            except ValueError:
+                pass # Ignorar si no es nmero
 
-    pagination = q.order_by(Pregunta.fecha_creacion.desc()).paginate(page=page, per_page=per_page, error_out=False)
-    
-    return jsonify({
-        'success': True, 
-        'preguntas': [p.to_dict() for p in pagination.items], 
-        'total': pagination.total,
-        'pages': pagination.pages,
-        'current_page': page
-    })
+        pagination = q.order_by(Pregunta.fecha_creacion.desc()).paginate(page=page, per_page=per_page, error_out=False)
+        
+        return jsonify({
+            'success': True, 
+            'preguntas': [p.to_dict() for p in pagination.items], 
+            'total': pagination.total,
+            'pages': pagination.pages,
+            'current_page': page
+        })
+    except Exception as e:
+        print(f"ERROR en listar_preguntas: {e}")
+        return jsonify({
+            'success': False, 
+            'message': f'Error al obtener preguntas: {str(e)}'
+        }), 500
 
 @app.route('/api/pregunta', methods=['POST'])
 def crear_pregunta():
@@ -1033,6 +1087,78 @@ def maintenance_ensure_constraints():
         return jsonify({'success': True, 'message': 'Constraints aplicados'}), 200
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error al aplicar constraints: {str(e)}'}), 500
+
+# ==================== API ENDPOINTS - RULETA ====================
+@app.route('/api/public/ruleta-config', methods=['GET'])
+def get_ruleta_config_public():
+    """Obtiene la configuración activa de la ruleta para el juego"""
+    configs = ConfiguracionRuleta.query.filter_by(activo=True).all()
+    # Si no hay configuración, devolver lista vacía para que el frontend use defaults o lo que decida
+    return jsonify({
+        'success': True,
+        'config': [c.to_dict() for c in configs]
+    })
+
+@app.route('/api/ruleta-config', methods=['GET'])
+@token_required
+def get_ruleta_config_admin():
+    """Obtiene toda la configuración de la ruleta (admin)"""
+    configs = ConfiguracionRuleta.query.all()
+    return jsonify({
+        'success': True,
+        'config': [c.to_dict() for c in configs]
+    })
+
+@app.route('/api/ruleta-config', methods=['POST'])
+@token_required
+def create_ruleta_config():
+    try:
+        data = request.get_json()
+        if not data.get('texto') or not data.get('tipo') or not data.get('color'):
+            return jsonify({'success': False, 'message': 'Faltan campos requeridos'}), 400
+        
+        c = ConfiguracionRuleta(
+            texto=data['texto'],
+            tipo=data['tipo'],
+            color=data['color'],
+            probabilidad=data.get('probabilidad', 1),
+            activo=bool(data.get('activo', True))
+        )
+        db.session.add(c)
+        db.session.commit()
+        return jsonify({'success': True, 'config': c.to_dict()}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ruleta-config/<int:id>', methods=['PUT'])
+@token_required
+def update_ruleta_config(id):
+    try:
+        c = ConfiguracionRuleta.query.get_or_404(id)
+        data = request.get_json()
+        if 'texto' in data: c.texto = data['texto']
+        if 'tipo' in data: c.tipo = data['tipo']
+        if 'color' in data: c.color = data['color']
+        if 'probabilidad' in data: c.probabilidad = data['probabilidad']
+        if 'activo' in data: c.activo = bool(data['activo'])
+        db.session.commit()
+        return jsonify({'success': True, 'config': c.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ruleta-config/<int:id>', methods=['DELETE'])
+@token_required
+def delete_ruleta_config(id):
+    try:
+        c = ConfiguracionRuleta.query.get_or_404(id)
+        db.session.delete(c)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Configuración eliminada'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 if __name__ == '__main__':
     init_db()
