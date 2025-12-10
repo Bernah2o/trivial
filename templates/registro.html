@@ -104,6 +104,15 @@
               placeholder="Ej: 3001234567"
               required
             />
+            <div
+              id="telefono-error"
+              style="
+                color: #ef4444;
+                font-size: 12px;
+                display: none;
+                margin-top: 6px;
+              "
+            ></div>
           </div>
 
           <input type="hidden" id="premio" name="premio" />
@@ -131,9 +140,6 @@
               >Compartir por WhatsApp al registrar</label
             >
           </div>
-          <button type="button" class="btn" id="share-btn">
-            Enviar por WhatsApp
-          </button>
         </div>
 
         <a href="/" class="back-link">← Volver al juego</a>
@@ -197,15 +203,28 @@
                 "¡Registro exitoso! Tu premio ha sido registrado correctamente. Presenta tu código en nuestras oficinas para canjearlo.",
                 "success"
               );
-              document.getElementById("registro-form").reset();
 
               const autoShare =
                 document.getElementById("share_on_submit").checked;
               if (autoShare) {
                 try {
-                  sendWhatsApp();
+                  const tel = document.getElementById("telefono").value;
+                  if (
+                    (String(tel || "").replace(/\D/g, "").length === 10 &&
+                      String(tel).startsWith("3")) ||
+                    (String(tel || "").replace(/\D/g, "").length === 12 &&
+                      String(tel).startsWith("57"))
+                  ) {
+                    sendWhatsApp();
+                  } else {
+                    showAlert(
+                      "Número de teléfono inválido para WhatsApp.",
+                      "error"
+                    );
+                  }
                 } catch (e) {}
               }
+              document.getElementById("registro-form").reset();
 
               setTimeout(() => {
                 window.location.href = "/";
@@ -298,9 +317,26 @@
         window.open(url, "_blank");
       }
 
-      document
-        .getElementById("share-btn")
-        .addEventListener("click", sendWhatsApp);
+      const telInput = document.getElementById("telefono");
+      const telError = document.getElementById("telefono-error");
+      function updatePhoneValidity() {
+        const raw = telInput.value;
+        const digits = String(raw || "").replace(/\D/g, "");
+        const valid =
+          (digits.length === 10 && raw.startsWith("3")) ||
+          (digits.length === 12 && raw.startsWith("57"));
+        if (!valid) {
+          telError.textContent =
+            "Número inválido. Usa móvil de 10 dígitos (3xxxxxxxxx) o con prefijo 57.";
+          telError.style.display = "block";
+        } else {
+          telError.textContent = "";
+          telError.style.display = "none";
+        }
+      }
+      telInput.addEventListener("input", updatePhoneValidity);
+      telInput.addEventListener("blur", updatePhoneValidity);
+      updatePhoneValidity();
 
       function addAdminAlert(type, payload) {
         try {

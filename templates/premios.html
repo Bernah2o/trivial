@@ -6,11 +6,7 @@
     <title>Gestión de Premios - DH2OCOL</title>
     <link rel="stylesheet" href="/assets/css/premios.css" />
     <link rel="icon" href="/assets/img/logo_4.png" type="image/png" />
-    <link
-      rel="shortcut icon"
-      href="/assets/img/logo_4.png"
-      type="image/png"
-    />
+    <link rel="shortcut icon" href="/assets/img/logo_4.png" type="image/png" />
     <link rel="apple-touch-icon" href="/assets/img/logo_4.png" />
     <meta name="theme-color" content="#1986c8" />
     <meta name="msapplication-TileColor" content="#008037" />
@@ -106,7 +102,6 @@
       </div>
     </div>
 
-
     <script>
       let premios = [];
       let premioEditando = null;
@@ -165,9 +160,9 @@
                         ${
                           premio.cantidad_disponible === 0
                             ? '<span class="badge badge-inactive">Sin stock</span>'
-                            : (premio.activo
-                              ? '<span class="badge badge-success">✓ Activo</span>'
-                              : '<span class="badge badge-inactive">✗ Inactivo</span>')
+                            : premio.activo
+                            ? '<span class="badge badge-success">✓ Activo</span>'
+                            : '<span class="badge badge-inactive">✗ Inactivo</span>'
                         }
                     </td>
                     <td>${new Date(premio.fecha_creacion).toLocaleDateString(
@@ -237,21 +232,23 @@
       let confirmCallback = null;
 
       function showConfirmModal(title, message, callback) {
-        document.getElementById('confirm-title').textContent = title;
-        document.getElementById('confirm-message').textContent = message;
+        document.getElementById("confirm-title").textContent = title;
+        document.getElementById("confirm-message").textContent = message;
         confirmCallback = callback;
-        document.getElementById('confirm-modal').classList.add('active');
+        document.getElementById("confirm-modal").classList.add("active");
       }
 
       function closeConfirmModal() {
-        document.getElementById('confirm-modal').classList.remove('active');
+        document.getElementById("confirm-modal").classList.remove("active");
         confirmCallback = null;
       }
 
-      document.getElementById('confirm-btn-action').addEventListener('click', () => {
-        if (confirmCallback) confirmCallback();
-        closeConfirmModal();
-      });
+      document
+        .getElementById("confirm-btn-action")
+        .addEventListener("click", () => {
+          if (confirmCallback) confirmCallback();
+          closeConfirmModal();
+        });
 
       async function guardarPremio(event) {
         event.preventDefault();
@@ -288,7 +285,13 @@
           if (result.success) {
             cerrarModal();
             cargarPremios();
-            showToast(result.message, 'success');
+            const nombrePremio = document.getElementById("nombre").value.trim();
+            if (premioEditando) {
+              showToast(`✅ Premio actualizado: ${nombrePremio}`, "success");
+              showUpdateSuccessModal(nombrePremio);
+            } else {
+              showToast(`✅ Premio creado: ${nombrePremio}`, "success");
+            }
           } else {
             mostrarErrorModal(result.message);
           }
@@ -298,29 +301,38 @@
         }
       }
 
+      function showUpdateSuccessModal(nombre) {
+        const modal = document.getElementById("update-success-modal");
+        const text = document.getElementById("update-success-text");
+        text.textContent = `El premio "${nombre}" fue actualizado correctamente.`;
+        modal.classList.add("active");
+      }
+
       async function eliminarPremio(id) {
         const premio = premios.find((p) => p.id === id);
         if (!premio) return;
 
         showConfirmModal(
-            "¿Eliminar Premio?", 
-            `¿Estás seguro de eliminar "${premio.nombre}"? Esta acción no es reversible.`,
-            async () => {
-                try {
-                  const response = await fetch(`/api/premio/${id}`, { method: "DELETE" });
-                  const result = await response.json();
+          "¿Eliminar Premio?",
+          `¿Estás seguro de eliminar "${premio.nombre}"? Esta acción no es reversible.`,
+          async () => {
+            try {
+              const response = await fetch(`/api/premio/${id}`, {
+                method: "DELETE",
+              });
+              const result = await response.json();
 
-                  if (result.success) {
-                    cargarPremios();
-                    showToast(result.message, 'success');
-                  } else {
-                    showToast(result.message, 'error');
-                  }
-                } catch (error) {
-                  console.error("Error al eliminar premio:", error);
-                  showToast("Error al eliminar el premio", 'error');
-                }
+              if (result.success) {
+                cargarPremios();
+                showToast(result.message, "success");
+              } else {
+                showToast(result.message, "error");
+              }
+            } catch (error) {
+              console.error("Error al eliminar premio:", error);
+              showToast("Error al eliminar el premio", "error");
             }
+          }
         );
       }
 
@@ -331,7 +343,7 @@
       }
 
       function mostrarError(mensaje) {
-        showToast(mensaje, 'error');
+        showToast(mensaje, "error");
       }
 
       // Cerrar modal al hacer clic fuera
@@ -341,53 +353,128 @@
         }
       });
 
+      document
+        .getElementById("update-success-modal")
+        .addEventListener("click", (e) => {
+          if (e.target.id === "update-success-modal") {
+            e.currentTarget.classList.remove("active");
+          }
+        });
+      document
+        .getElementById("update-success-close")
+        .addEventListener("click", () => {
+          document
+            .getElementById("update-success-modal")
+            .classList.remove("active");
+        });
+
       async function cerrarSesion() {
         showConfirmModal(
-            "Cerrar Sesión",
-            "¿Estás seguro de que quieres salir del sistema?",
-            async () => {
-                try {
-                  const response = await fetch("/api/logout", { method: "POST" });
-                  const data = await response.json();
-                  if (data.success) window.location.href = "/";
-                } catch (error) {
-                  console.error("Error al cerrar sesión:", error);
-                  window.location.href = "/";
-                }
+          "Cerrar Sesión",
+          "¿Estás seguro de que quieres salir del sistema?",
+          async () => {
+            try {
+              const response = await fetch("/api/logout", { method: "POST" });
+              const data = await response.json();
+              if (data.success) window.location.href = "/";
+            } catch (error) {
+              console.error("Error al cerrar sesión:", error);
+              window.location.href = "/";
             }
+          }
         );
       }
 
-
       function showToast(message, type) {
-        let container = document.getElementById('toast-container');
+        let container = document.getElementById("toast-container");
         if (!container) {
-          container = document.createElement('div');
-          container.id = 'toast-container';
-          container.className = 'toast-container';
+          container = document.createElement("div");
+          container.id = "toast-container";
+          container.className = "toast-container";
           document.body.appendChild(container);
         }
-        const t = document.createElement('div');
-        t.className = 'toast ' + (type ? 'toast-' + type : 'toast-info');
-        t.textContent = String(message || '');
+        const t = document.createElement("div");
+        t.className = "toast " + (type ? "toast-" + type : "toast-info");
+        t.textContent = String(message || "");
         container.appendChild(t);
-        requestAnimationFrame(() => { t.classList.add('visible'); });
+        requestAnimationFrame(() => {
+          t.classList.add("visible");
+        });
         setTimeout(() => {
-          t.classList.remove('visible');
-          setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 250);
+          t.classList.remove("visible");
+          setTimeout(() => {
+            if (t.parentNode) t.parentNode.removeChild(t);
+          }, 250);
         }, 3500);
       }
     </script>
 
     <!-- Modal de Confirmación -->
     <div id="confirm-modal" class="modal-overlay">
-      <div class="modal-content" style="max-width: 400px; text-align: center;">
-        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
-        <h3 id="confirm-title" style="margin: 0 0 10px 0; color: #0f172a; font-size: 22px;">Confirmación</h3>
-        <p id="confirm-message" style="color: #64748b; margin-bottom: 24px; line-height: 1.5;"></p>
-        <div style="display: flex; gap: 12px; justify-content: center;">
-          <button class="btn" onclick="closeConfirmModal()" style="background: #f1f5f9; color: #475569; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 600;">Cancelar</button>
-          <button id="confirm-btn-action" style="background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);">Confirmar</button>
+      <div class="modal-content" style="max-width: 400px; text-align: center">
+        <div style="font-size: 48px; margin-bottom: 16px">⚠️</div>
+        <h3
+          id="confirm-title"
+          style="margin: 0 0 10px 0; color: #0f172a; font-size: 22px"
+        >
+          Confirmación
+        </h3>
+        <p
+          id="confirm-message"
+          style="color: #64748b; margin-bottom: 24px; line-height: 1.5"
+        ></p>
+        <div style="display: flex; gap: 12px; justify-content: center">
+          <button
+            class="btn"
+            onclick="closeConfirmModal()"
+            style="
+              background: #f1f5f9;
+              color: #475569;
+              border: none;
+              padding: 10px 20px;
+              border-radius: 10px;
+              cursor: pointer;
+              font-weight: 600;
+            "
+          >
+            Cancelar
+          </button>
+          <button
+            id="confirm-btn-action"
+            style="
+              background: #ef4444;
+              color: white;
+              border: none;
+              padding: 10px 20px;
+              border-radius: 10px;
+              cursor: pointer;
+              font-weight: 600;
+              box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+            "
+          >
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Actualización Exitosa -->
+    <div id="update-success-modal" class="modal-overlay">
+      <div class="modal-content" style="max-width: 420px; text-align: center">
+        <div style="font-size: 48px; margin-bottom: 14px">✅</div>
+        <h3 style="margin: 0 0 10px 0; color: #0f172a; font-size: 22px">
+          Premio Actualizado
+        </h3>
+        <p
+          id="update-success-text"
+          style="color: #64748b; margin-bottom: 20px; line-height: 1.6"
+        >
+          Actualización realizada correctamente.
+        </p>
+        <div class="modal-actions" style="justify-content: center">
+          <button id="update-success-close" class="btn btn-primary">
+            Aceptar
+          </button>
         </div>
       </div>
     </div>

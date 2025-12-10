@@ -320,12 +320,10 @@ def token_required(f):
             return redirect('/login')
         
         user_id = verify_token(token)
-        if not token:
+        if not user_id:
             response = redirect('/login')
             is_secure = (request.headers.get('X-Forwarded-Proto', '').lower() == 'https') or request.is_secure
             response.set_cookie('auth_token', '', expires=0, secure=is_secure, samesite='Lax', path='/')
-            return response
-            return response
             return response
         
         return f(*args, **kwargs)
@@ -334,7 +332,13 @@ def token_required(f):
 # ==================== RUTAS - PÁGINAS ====================
 @app.route('/')
 def index():
-    """Página principal del juego"""
+    """Redirige siempre a login"""
+    return redirect('/login')
+
+@app.route('/home')
+@token_required
+def home():
+    """Página principal del juego (protegida)"""
     return send_from_directory('..', 'index.html')
 
 @app.route('/script.js')

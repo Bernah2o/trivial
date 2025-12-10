@@ -51,11 +51,26 @@
       </div>
       <div class="admin-access">
         <button
-          onclick="window.location.href='/login'"
+          id="btn-admin-login"
           class="btn-admin"
           title="Acceso Administrativo"
         >
           🔐 Login Admin
+        </button>
+        <span
+          id="admin-status"
+          class="btn-admin"
+          style="pointer-events: none; display: none"
+        >
+          🟢 Sesión Activa
+        </span>
+        <button
+          id="btn-admin-logout"
+          class="btn-admin"
+          style="display: none"
+          title="Cerrar Sesión"
+        >
+          🚪 Cerrar Sesión
         </button>
       </div>
     </header>
@@ -213,70 +228,11 @@
           <p class="prize-validity">
             Validez del premio: Entre 15 y 30 días calendario
           </p>
-          <form id="winner-form" class="winner-form">
-            <div class="form-row">
-              <input
-                id="wf-cedula"
-                class="input"
-                type="text"
-                inputmode="numeric"
-                placeholder="Cédula"
-                required
-              />
-              <input
-                id="wf-telefono"
-                class="input"
-                type="tel"
-                placeholder="Teléfono"
-                required
-              />
-            </div>
-            <div class="form-row">
-              <input
-                id="wf-nombres"
-                class="input"
-                type="text"
-                placeholder="Nombres"
-                required
-              />
-              <input
-                id="wf-apellidos"
-                class="input"
-                type="text"
-                placeholder="Apellidos"
-                required
-              />
-            </div>
-            <input
-              id="wf-direccion"
-              class="input"
-              type="text"
-              placeholder="Dirección"
-            />
-            <input type="hidden" id="wf-premio" />
-            <div class="winner-actions">
-              <button type="submit" class="btn btn-primary">
-                Registrar Premio
-              </button>
-              <a class="btn btn-secondary" id="wf-open-page" target="_blank"
-                >Abrir página de registro</a
-              >
-              <button type="button" class="btn" id="wf-share-btn">
-                Compartir por WhatsApp
-              </button>
-              <label
-                style="
-                  display: flex;
-                  align-items: center;
-                  gap: 6px;
-                  font-size: 12px;
-                "
-              >
-                <input type="checkbox" id="wf-share-on-submit" /> Compartir al
-                registrar
-              </label>
-            </div>
-          </form>
+          <div class="winner-actions">
+            <a class="btn btn-secondary" id="wf-open-page" target="_blank"
+              >Abrir página de registro</a
+            >
+          </div>
         </div>
         <button id="btn-restart" class="btn">Volver a jugar</button>
         <p class="site-note">Conoce más en www.dh2o.com.co</p>
@@ -324,5 +280,40 @@
     </div>
 
     <script src="script.js?v=2"></script>
+    <script>
+      (function () {
+        const btnLogin = document.getElementById("btn-admin-login");
+        const btnLogout = document.getElementById("btn-admin-logout");
+        const status = document.getElementById("admin-status");
+        function setLogged(logged) {
+          if (logged) {
+            btnLogin.style.display = "none";
+            status.style.display = "inline-flex";
+            btnLogout.style.display = "inline-flex";
+          } else {
+            btnLogin.style.display = "inline-flex";
+            status.style.display = "none";
+            btnLogout.style.display = "none";
+          }
+        }
+        async function checkAdmin() {
+          try {
+            const res = await fetch("/api/verify");
+            setLogged(res.status === 200);
+          } catch (e) {
+            setLogged(false);
+          }
+        }
+        btnLogin.addEventListener("click", () =>
+          window.open("/login", "_blank")
+        );
+        btnLogout.addEventListener("click", () => {
+          fetch("/api/logout", { method: "POST" }).then(() => {
+            window.location.href = "/login";
+          });
+        });
+        checkAdmin();
+      })();
+    </script>
   </body>
 </html>

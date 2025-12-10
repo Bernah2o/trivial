@@ -6,11 +6,7 @@
     <title>Panel Admin - DH2OCOL</title>
     <link rel="stylesheet" href="/assets/css/admin.css" />
     <link rel="icon" href="/assets/img/logo_4.png" type="image/png" />
-    <link
-      rel="shortcut icon"
-      href="/assets/img/logo_4.png"
-      type="image/png"
-    />
+    <link rel="shortcut icon" href="/assets/img/logo_4.png" type="image/png" />
     <link rel="apple-touch-icon" href="/assets/img/logo_4.png" />
     <meta name="theme-color" content="#1986c8" />
     <meta name="msapplication-TileColor" content="#008037" />
@@ -32,11 +28,25 @@
           <div class="label">Pendientes</div>
           <div class="value" id="stat-pendientes">0</div>
         </div>
+        <div class="stat-card" title="Estado de sesión">
+          <div class="label">Estado</div>
+          <div
+            class="value"
+            style="
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              font-size: 18px;
+            "
+          >
+            🟢 Sesión Activa
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="container">
-      <div id="admin-alerts" style="margin-bottom:12px"></div>
+      <div id="admin-alerts" style="margin-bottom: 12px"></div>
       <div class="controls">
         <div class="search-box">
           <input
@@ -57,7 +67,7 @@
         <button class="btn" onclick="window.location.href='/config-ruleta'">
           🎡 Configurar Ruleta
         </button>
-        <button class="btn" onclick="window.location.href='/'">
+        <button class="btn" onclick="window.open('/home','_blank')">
           🏠 Ir al Juego
         </button>
         <button class="btn btn-warning" onclick="resetLeaderboard()">
@@ -107,28 +117,45 @@
           <h3 id="client-modal-title">Editar Cliente</h3>
           <div class="form-grid">
             <div class="grid-span">
-              <label style="display:block; margin-bottom:8px; color:var(--azul);">Nombres</label>
-              <input id="cm-nombres" class="input" style="width:100%" />
+              <label
+                style="display: block; margin-bottom: 8px; color: var(--azul)"
+                >Nombres</label
+              >
+              <input id="cm-nombres" class="input" style="width: 100%" />
             </div>
             <div class="grid-span">
-              <label style="display:block; margin-bottom:8px; color:var(--azul);">Apellidos</label>
-              <input id="cm-apellidos" class="input" style="width:100%" />
+              <label
+                style="display: block; margin-bottom: 8px; color: var(--azul)"
+                >Apellidos</label
+              >
+              <input id="cm-apellidos" class="input" style="width: 100%" />
             </div>
             <div class="grid-span">
-              <label style="display:block; margin-bottom:8px; color:var(--azul);">Cédula</label>
-              <input id="cm-cedula" class="input" style="width:100%" />
+              <label
+                style="display: block; margin-bottom: 8px; color: var(--azul)"
+                >Cédula</label
+              >
+              <input id="cm-cedula" class="input" style="width: 100%" />
             </div>
             <div class="grid-span">
-              <label style="display:block; margin-bottom:8px; color:var(--azul);">Teléfono</label>
-              <input id="cm-telefono" class="input" style="width:100%" />
+              <label
+                style="display: block; margin-bottom: 8px; color: var(--azul)"
+                >Teléfono</label
+              >
+              <input id="cm-telefono" class="input" style="width: 100%" />
             </div>
             <div class="grid-span">
-              <label style="display:block; margin-bottom:8px; color:var(--azul);">Dirección</label>
-              <input id="cm-direccion" class="input" style="width:100%" />
+              <label
+                style="display: block; margin-bottom: 8px; color: var(--azul)"
+                >Dirección</label
+              >
+              <input id="cm-direccion" class="input" style="width: 100%" />
             </div>
           </div>
           <div class="modal-actions">
-            <button id="client-save" class="btn btn-primary">Guardar Cambios</button>
+            <button id="client-save" class="btn btn-primary">
+              Guardar Cambios
+            </button>
             <button id="client-cancel" class="btn">Cancelar</button>
           </div>
         </div>
@@ -139,22 +166,80 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="/assets/js/admin.js" defer></script>
     <script>
-      document.addEventListener('DOMContentLoaded', () => {
+      document.addEventListener("DOMContentLoaded", () => {
         try {
-          const raw = localStorage.getItem('adminAlerts');
+          const raw = localStorage.getItem("adminAlerts");
           if (!raw) return;
           const alerts = JSON.parse(raw) || [];
           if (!alerts.length) return;
-          const box = document.getElementById('admin-alerts');
-          alerts.forEach(a => {
-            const d = document.createElement('div');
-            d.className = 'alert alert-error';
-            const ced = a && a.payload ? a.payload.cedula : '';
-            const cod = a && a.payload ? a.payload.codigo : '';
-            d.textContent = `Alerta: cédula ya registrada (${ced}) intento con código ${cod}`;
-            box.appendChild(d);
+          const grouped = {};
+          alerts.forEach((a) => {
+            const ced = a && a.payload ? String(a.payload.cedula || "") : "";
+            const cod = a && a.payload ? String(a.payload.codigo || "") : "";
+            if (!ced) return;
+            if (!grouped[ced]) grouped[ced] = new Set();
+            if (cod) grouped[ced].add(cod);
           });
-          localStorage.removeItem('adminAlerts');
+
+          const box = document.getElementById("admin-alerts");
+          box.innerHTML = "";
+          const card = document.createElement("div");
+          card.className = "card";
+          card.style.padding = "16px 20px";
+          card.style.marginBottom = "16px";
+
+          const title = document.createElement("div");
+          title.style.display = "flex";
+          title.style.alignItems = "center";
+          title.style.gap = "10px";
+          title.style.marginBottom = "10px";
+          const icon = document.createElement("span");
+          icon.textContent = "⚠️";
+          const t = document.createElement("strong");
+          t.textContent = "Alertas recientes";
+          title.appendChild(icon);
+          title.appendChild(t);
+          card.appendChild(title);
+
+          Object.keys(grouped).forEach((ced) => {
+            const row = document.createElement("div");
+            row.style.display = "flex";
+            row.style.alignItems = "center";
+            row.style.gap = "12px";
+            row.style.margin = "8px 0";
+
+            const label = document.createElement("span");
+            label.textContent = "Cédula duplicada";
+            label.className = "badge badge-danger";
+
+            const cedulaBadge = document.createElement("span");
+            cedulaBadge.className = "badge badge-danger";
+            cedulaBadge.textContent = ced;
+
+            const codesWrap = document.createElement("div");
+            codesWrap.style.display = "flex";
+            codesWrap.style.flexWrap = "wrap";
+            codesWrap.style.gap = "6px";
+            grouped[ced].forEach((code) => {
+              const pill = document.createElement("span");
+              pill.textContent = code;
+              pill.style.background = "#f1f5f9";
+              pill.style.color = "#0f172a";
+              pill.style.border = "1px solid #e2e8f0";
+              pill.style.padding = "4px 8px";
+              pill.style.borderRadius = "12px";
+              pill.style.fontSize = "12px";
+              codesWrap.appendChild(pill);
+            });
+
+            row.appendChild(label);
+            row.appendChild(cedulaBadge);
+            row.appendChild(codesWrap);
+            card.appendChild(row);
+          });
+
+          box.appendChild(card);
+          localStorage.removeItem("adminAlerts");
         } catch (e) {}
       });
     </script>
