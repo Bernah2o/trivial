@@ -4,9 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Configuración Ruleta - DH2OCOL</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <link rel="icon" href="../assets/img/logo_4.png" type="image/png">
-    <link rel="stylesheet" href="../assets/css/config_ruleta.css">
+    <link rel="stylesheet" href="/assets/css/style.css">
+    <link rel="icon" href="/assets/img/logo_4.png" type="image/png">
+    <link rel="stylesheet" href="/assets/css/config_ruleta.css">
 
 </head>
 <body>
@@ -28,6 +28,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 40px"></th>
                             <th>Texto</th>
                             <th>Tipo</th>
                             <th>Color</th>
@@ -82,21 +83,11 @@
         </div>
     </div>
 
-    <!-- Custom Delete Confirmation Modal -->
-    <div id="delete-modal" class="modal-overlay">
-        <div class="modal-content">
-            <span class="modal-icon">🗑️</span>
-            <h3 class="modal-title">¿Eliminar Segmento?</h3>
-            <p class="modal-text">Esta acción no se puede deshacer. ¿Estás seguro de continuar?</p>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-                <button class="btn btn-confirm" id="confirm-delete-btn">Sí, Eliminar</button>
-            </div>
-        </div>
-    </div>
+
+    <!-- Referencia a SortableJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
 
     <script>
-        let deleteId = null;
 
         // Check auth
         async function checkAuth() {
@@ -127,7 +118,11 @@
             
             configs.forEach(c => {
                 const tr = document.createElement('tr');
+                tr.setAttribute('data-id', c.id); // ID para Sortable
                 tr.innerHTML = `
+                    <td class="drag-handle" style="cursor: move; width: 30px;">
+                        <span style="opacity: 0.5;">☰</span>
+                    </td>
                     <td>
                         <span style="font-weight: 500;">${c.texto}</span>
                     </td>
@@ -145,6 +140,40 @@
                 `;
                 tbody.appendChild(tr);
             });
+
+            // Inicializar Sortable
+            if (tbody.sortableInstance) tbody.sortableInstance.destroy(); // Limpiar previo
+            
+            tbody.sortableInstance = new Sortable(tbody, {
+                handle: '.drag-handle', // Solo arrastrable desde el icono
+                animation: 150,
+                onEnd: function (evt) {
+                    saveOrder();
+                }
+            });
+        }
+
+        async function saveOrder() {
+            const tbody = document.getElementById('config-list');
+            const rows = Array.from(tbody.children);
+            const updates = rows.map((tr, index) => ({
+                id: tr.getAttribute('data-id'),
+                orden: index
+            }));
+
+            try {
+                const res = await fetch('/api/ruleta-config/reorder', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ orden: updates })
+                });
+                const data = await res.json();
+                if(!data.success) {
+                     console.error("Error guardando orden", data.message);
+                }
+            } catch(e) {
+                console.error("Error de red guardando orden", e);
+            }
         }
 
         document.getElementById('config-form').addEventListener('submit', async (e) => {
@@ -189,35 +218,15 @@
         }
 
         function confirmDelete(id) {
-            deleteId = id;
-            const modal = document.getElementById('delete-modal');
-            modal.style.display = 'flex'; // Ensure display is flex before opacity transition
-            // Small delay to allow display change to register before class change
-            setTimeout(() => {
-                modal.classList.add('active');
-            }, 10);
-        }
-
-        function closeModal() {
-            const modal = document.getElementById('delete-modal');
-            modal.classList.remove('active');
-            setTimeout(() => {
-                modal.style.display = 'none';
-            }, 300); // Match transition duration
-            deleteId = null;
-        }
-
-        document.getElementById('confirm-delete-btn').addEventListener('click', () => {
-            if (deleteId) {
-                fetch(`/api/ruleta-config/${deleteId}`, { method: 'DELETE' })
+            if (confirm("¿Estás seguro de eliminar este segmento? Esta acción no se puede deshacer.")) {
+                fetch(`/api/ruleta-config/${id}`, { method: 'DELETE' })
                     .then(r => r.json())
                     .then(d => {
                         if(d.success) loadConfig();
                         else alert(d.message);
-                        closeModal();
                     });
             }
-        });
+        }
 
         function resetForm() {
             document.getElementById('form-title').textContent = '✨ Nuevo Segmento';

@@ -23,7 +23,8 @@ else:
 
 app = Flask(__name__, 
             template_folder='../templates',
-            static_folder='../assets')
+            static_folder='../assets',
+            static_url_path='/assets')
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 # Configuración de la base de datos PostgreSQL
@@ -169,6 +170,7 @@ class ConfiguracionRuleta(db.Model):
     color = db.Column(db.String(20), nullable=False)
     probabilidad = db.Column(db.Integer, default=1) # Peso para probabilidad (opcional para futuro)
     activo = db.Column(db.Boolean, default=True)
+    orden = db.Column(db.Integer, default=0)
     
     def to_dict(self):
         return {
@@ -177,7 +179,8 @@ class ConfiguracionRuleta(db.Model):
             'tipo': self.tipo,
             'color': self.color,
             'probabilidad': self.probabilidad,
-            'activo': self.activo
+            'activo': self.activo,
+            'orden': self.orden
         }
 class User(db.Model):
     __tablename__ = 'users'
@@ -228,9 +231,16 @@ def ensure_constraints():
                     tipo VARCHAR(20) NOT NULL,
                     color VARCHAR(20) NOT NULL,
                     probabilidad INTEGER DEFAULT 1,
-                    activo BOOLEAN DEFAULT TRUE
+                    activo BOOLEAN DEFAULT TRUE,
+                    orden INTEGER DEFAULT 0
                 )
             """))
+            # Agregar columna orden si no existe (migración)
+            try:
+                db.session.execute(db.text("ALTER TABLE configuracion_ruleta ADD COLUMN orden INTEGER DEFAULT 0"))
+            except Exception:
+                pass # Ya existe
+                
             db.session.commit()
             
             # Default ruleta segments if empty
@@ -1092,7 +1102,7 @@ def maintenance_ensure_constraints():
 @app.route('/api/public/ruleta-config', methods=['GET'])
 def get_ruleta_config_public():
     """Obtiene la configuración activa de la ruleta para el juego"""
-    configs = ConfiguracionRuleta.query.filter_by(activo=True).all()
+    configs = ConfiguracionRuleta.query.filter_by(activo=True).order_by(ConfiguracionRuleta.orden.asc(), ConfiguracionRuleta.id.asc()).all()
     # Si no hay configuración, devolver lista vacía para que el frontend use defaults o lo que decida
     return jsonify({
         'success': True,
@@ -1103,7 +1113,7 @@ def get_ruleta_config_public():
 @token_required
 def get_ruleta_config_admin():
     """Obtiene toda la configuración de la ruleta (admin)"""
-    configs = ConfiguracionRuleta.query.all()
+    configs = ConfiguracionRuleta.query.order_by(ConfiguracionRuleta.orden.asc(), ConfiguracionRuleta.id.asc()).all()
     return jsonify({
         'success': True,
         'config': [c.to_dict() for c in configs]
@@ -1122,7 +1132,8 @@ def create_ruleta_config():
             tipo=data['tipo'],
             color=data['color'],
             probabilidad=data.get('probabilidad', 1),
-            activo=bool(data.get('activo', True))
+            activo=bool(data.get('activo', True)),
+            orden=data.get('orden', 0)
         )
         db.session.add(c)
         db.session.commit()
@@ -1142,6 +1153,7 @@ def update_ruleta_config(id):
         if 'color' in data: c.color = data['color']
         if 'probabilidad' in data: c.probabilidad = data['probabilidad']
         if 'activo' in data: c.activo = bool(data['activo'])
+        if 'orden' in data: c.orden = data['orden']
         db.session.commit()
         return jsonify({'success': True, 'config': c.to_dict()})
     except Exception as e:

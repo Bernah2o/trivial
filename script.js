@@ -769,6 +769,7 @@ async function init() {
   setupEventListeners();
   loadLeaderboard();
   cargarPremios();
+  setScreen("home");
 }
 
 function setupEventListeners() {
@@ -1176,6 +1177,7 @@ function renderMemoryLevels() {
       d.classList.add("selected");
       state.memoryLevel = level;
       el.btnStart.disabled = false;
+      el.btnStart.classList.remove("hidden");
     });
     el.memoryLevels.appendChild(d);
   });
@@ -1500,23 +1502,9 @@ async function initWheel() {
                 text: c.texto,
                 color: c.color
             }));
-        } else {
-             // Fallback default
-             extraSegments = [
-                { type: 'prize', text: '🎁 PREMIO', color: '#FFD700' },
-                { type: 'retry', text: 'Gira Otra Vez', color: '#4CAF50' },
-                { type: 'prize', text: '🏆 SORPRESA', color: '#FF9800' }, 
-                { type: 'retry', text: 'Intenta Nuevo', color: '#2196F3' }
-            ];
         }
     } catch (e) {
         console.error("Error cargando config ruleta", e);
-        // Fallback default
-         extraSegments = [
-            { type: 'prize', text: '🎁 PREMIO', color: '#FFD700' },
-            { type: 'retry', text: 'Gira Otra Vez', color: '#4CAF50' },
-            { type: 'prize', text: '🏆 SORPRESA', color: '#FF9800' }
-        ];
     }
 
     // Mezclar y agregar extras
