@@ -561,13 +561,34 @@ def validar_codigo(codigo):
 
 @app.route('/api/clientes', methods=['GET'])
 def listar_clientes():
-    """Lista todos los clientes registrados"""
-    clientes = Cliente.query.order_by(Cliente.fecha_registro.desc()).all()
-    return jsonify({
-        'success': True,
-        'clientes': [cliente.to_dict() for cliente in clientes],
-        'total': len(clientes)
-    })
+    """Lista clientes registrados, con paginación opcional"""
+    page = request.args.get('page', type=int)
+    per_page = request.args.get('per_page', type=int) or 25
+    try:
+        q = db.session.query(Cliente).order_by(Cliente.fecha_registro.desc())
+        if page and per_page:
+            total = db.session.query(db.func.count(Cliente.id)).scalar() or 0
+            pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+            offset = (page - 1) * per_page if page > 0 else 0
+            items = q.limit(per_page).offset(offset).all()
+        else:
+            items = q.all()
+            total = len(items)
+            pages = 1
+            page = 1
+        return jsonify({
+            'success': True,
+            'clientes': [c.to_dict() for c in items],
+            'total': int(total),
+            'pages': int(pages),
+            'current_page': int(page)
+        })
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Error al listar clientes'}), 500
 
 @app.route('/api/preguntas', methods=['GET'])
 def listar_preguntas():
@@ -578,29 +599,36 @@ def listar_preguntas():
     per_page = request.args.get('per_page', 10, type=int)
 
     try:
-        q = Pregunta.query
+        filters = []
         if activa_param is not None:
             active = str(activa_param).lower() == 'true'
-            q = q.filter_by(activa=active)
-
+            filters.append(Pregunta.activa == active)
         if categoria_id_param:
             try:
                 cat_id = int(categoria_id_param)
-                q = q.filter_by(categoria_id=cat_id)
+                filters.append(Pregunta.categoria_id == cat_id)
             except ValueError:
                 pass
 
-        total = q.count()
+        total = db.session.query(db.func.count(Pregunta.id)).filter(*filters).scalar() or 0
         pages = (total + per_page - 1) // per_page if per_page > 0 else 1
         offset = (page - 1) * per_page if page > 0 else 0
-        items = q.order_by(Pregunta.fecha_creacion.desc()).limit(per_page).offset(offset).all()
+
+        items = (
+            db.session.query(Pregunta)
+            .filter(*filters)
+            .order_by(Pregunta.fecha_creacion.desc())
+            .limit(per_page)
+            .offset(offset)
+            .all()
+        )
 
         return jsonify({
             'success': True,
             'preguntas': [p.to_dict() for p in items],
-            'total': total,
-            'pages': pages,
-            'current_page': page
+            'total': int(total),
+            'pages': int(pages),
+            'current_page': int(page)
         })
     except Exception as e:
         try:
@@ -701,12 +729,25 @@ def eliminar_pregunta(id):
 @app.route('/api/categorias', methods=['GET'])
 def listar_categorias():
     activa_param = request.args.get('activa')
-    q = Categoria.query
-    if activa_param is not None:
-        active = str(activa_param).lower() == 'true'
-        q = q.filter_by(activa=active)
-    cats = q.order_by(Categoria.nombre.asc()).all()
-    return jsonify({'success': True, 'categorias': [c.to_dict() for c in cats], 'total': len(cats)})
+    try:
+        filters = []
+        if activa_param is not None:
+            active = str(activa_param).lower() == 'true'
+            filters.append(Categoria.activa == active)
+
+        cats = (
+            db.session.query(Categoria)
+            .filter(*filters)
+            .order_by(Categoria.nombre.asc())
+            .all()
+        )
+        return jsonify({'success': True, 'categorias': [c.to_dict() for c in cats], 'total': len(cats)})
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Error al listar categorías'}), 500
 
 @app.route('/api/categoria', methods=['POST'])
 def crear_categoria():
@@ -879,26 +920,44 @@ def estadisticas():
 # ==================== API ENDPOINTS - PREMIOS ====================
 @app.route('/api/premios', methods=['GET'])
 def listar_premios():
-    """Lista todos los premios"""
+    """Lista premios con filtro de activos y paginación opcional"""
     try:
-        # Filtrar solo activos si se especifica
         solo_activos = request.args.get('activos', 'false').lower() == 'true'
-        
+        page = request.args.get('page', type=int)
+        per_page = request.args.get('per_page', type=int) or 25
+
+        base = db.session.query(Premio)
         if solo_activos:
-            premios = Premio.query.filter_by(activo=True).order_by(Premio.nombre).all()
+            base = base.filter(Premio.activo == True)
+        base = base.order_by(Premio.nombre.asc())
+
+        if page and per_page:
+            total = db.session.query(db.func.count(Premio.id))
+            if solo_activos:
+                total = total.filter(Premio.activo == True)
+            total = total.scalar() or 0
+            pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+            offset = (page - 1) * per_page if page > 0 else 0
+            items = base.limit(per_page).offset(offset).all()
         else:
-            premios = Premio.query.order_by(Premio.nombre).all()
-        
+            items = base.all()
+            total = len(items)
+            pages = 1
+            page = 1
+
         return jsonify({
             'success': True,
-            'premios': [premio.to_dict() for premio in premios],
-            'total': len(premios)
+            'premios': [p.to_dict() for p in items],
+            'total': int(total),
+            'pages': int(pages),
+            'current_page': int(page)
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error al listar premios: {str(e)}'
-        }), 500
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Error al listar premios'}), 500
 
 @app.route('/api/premio/<int:id>', methods=['GET'])
 def obtener_premio(id):
