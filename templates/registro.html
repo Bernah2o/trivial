@@ -6,11 +6,7 @@
     <title>Registro de Premio - DH2OCOL</title>
     <link rel="stylesheet" href="/assets/css/registro.css" />
     <link rel="icon" href="/assets/img/logo_4.png" type="image/png" />
-    <link
-      rel="shortcut icon"
-      href="/assets/img/logo_4.png"
-      type="image/png"
-    />
+    <link rel="shortcut icon" href="/assets/img/logo_4.png" type="image/png" />
     <link rel="apple-touch-icon" href="/assets/img/logo_4.png" />
     <meta name="theme-color" content="#1986c8" />
     <meta name="msapplication-TileColor" content="#008037" />
@@ -215,11 +211,18 @@
                 window.location.href = "/";
               }, 3000);
             } else {
-              showAlert(
+              const msg =
                 data.message ||
-                  "Error al registrar. Por favor, intenta de nuevo.",
-                "error"
-              );
+                "Error al registrar. Por favor, intenta de nuevo.";
+              showAlert(msg, "error");
+              try {
+                if (/cedula|cédula/i.test(String(msg))) {
+                  addAdminAlert("cedula_duplicada", {
+                    cedula: formData.cedula,
+                    codigo: formData.codigo_premio,
+                  });
+                }
+              } catch (e) {}
             }
           } catch (error) {
             showAlert(
@@ -299,7 +302,14 @@
         .getElementById("share-btn")
         .addEventListener("click", sendWhatsApp);
 
-
+      function addAdminAlert(type, payload) {
+        try {
+          const k = "adminAlerts";
+          const list = JSON.parse(localStorage.getItem(k) || "[]");
+          list.push({ type, payload, ts: Date.now() });
+          localStorage.setItem(k, JSON.stringify(list));
+        } catch (e) {}
+      }
     </script>
   </body>
 </html>

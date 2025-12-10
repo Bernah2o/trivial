@@ -536,23 +536,26 @@ const memoryLevels = [
   {
     id: "easy",
     nombre: "Fácil",
-    descripcion: "8 pares - Tiempo ilimitado",
+    descripcion: "8 pares - Tiempo ilimitado - 6 intentos",
     pairs: 8,
     timeLimit: 0,
+    lives: 6,
   },
   {
     id: "medium",
     nombre: "Medio",
-    descripcion: "8 pares - 2 minutos",
+    descripcion: "8 pares - 2 minutos - 5 intentos",
     pairs: 8,
     timeLimit: 120,
+    lives: 5,
   },
   {
     id: "hard",
     nombre: "Difícil",
-    descripcion: "8 pares - 90 segundos",
+    descripcion: "8 pares - 90 segundos - 4 intentos",
     pairs: 8,
     timeLimit: 90,
+    lives: 4,
   },
 ];
 
@@ -603,6 +606,10 @@ const state = {
   puzzleTimerInterval: null,
   puzzleTimeLeft: 60,
   draggedPiece: null,
+  soundEnabled: true,
+  volume: 0.6,
+  audioCtx: null,
+  whatsappMessage: "",
 };
 
 // ==================== ELEMENTS ====================
@@ -619,7 +626,7 @@ const el = {
   triviaSelection: document.getElementById("trivia-selection"),
   memorySelection: document.getElementById("memory-selection"),
   wheelSelection: document.getElementById("wheel-selection"),
-  
+
   // Wheel elements
   btnModeWheel: document.getElementById("btn-mode-wheel"),
   wheelScreen: document.getElementById("screen-wheel"),
@@ -631,7 +638,7 @@ const el = {
   // Puzzle elements
   btnModePuzzle: document.getElementById("btn-mode-puzzle"),
   puzzleScreen: document.getElementById("screen-puzzle"),
-  puzzleBoard: document.getElementById("puzzle-board"), 
+  puzzleBoard: document.getElementById("puzzle-board"),
   puzzleScore: document.getElementById("puzzle-score"),
   puzzleTimer: document.getElementById("puzzle-timer"),
   btnPuzzleQuit: document.getElementById("btn-puzzle-quit"),
@@ -646,6 +653,8 @@ const el = {
   question: document.getElementById("question"),
   options: document.getElementById("options"),
   progressBar: document.getElementById("progress-bar"),
+  progressLabel: document.getElementById("progress-label"),
+  progressCount: document.getElementById("progress-count"),
   timer: document.getElementById("timer"),
 
   // Memory elements
@@ -662,6 +671,13 @@ const el = {
   finalStats: document.getElementById("final-stats"),
   finalCode: document.getElementById("final-code"),
   btnRestart: document.getElementById("btn-restart"),
+  winnerCard: document.getElementById("winner-card"),
+  winnerPrize: document.getElementById("winner-prize"),
+  winnerCode: document.getElementById("winner-code"),
+  winnerForm: document.getElementById("winner-form"),
+  wfOpenPage: document.getElementById("wf-open-page"),
+  wfShareBtn: document.getElementById("wf-share-btn"),
+  wfShareOnSubmit: document.getElementById("wf-share-on-submit"),
 
   // Modals
   modal: document.getElementById("modal"),
@@ -676,6 +692,7 @@ const el = {
   btnCloseLeaderboard: document.getElementById("btn-close-leaderboard"),
   tabTrivia: document.getElementById("tab-trivia"),
   tabMemory: document.getElementById("tab-memory"),
+  btnSound: document.getElementById("btn-sound"),
 };
 
 // ==================== PRIZE LOADING ====================
@@ -807,7 +824,17 @@ function setupEventListeners() {
   // Final screen
   el.btnRestart.addEventListener("click", () => {
     clearTimeout(state.inFinalTimeout);
-    setScreen("home");
+    if (state.mode === "memory" && state.memoryLevel) {
+      startMemoryGame();
+    } else if (state.mode === "trivia" && state.pack) {
+      startTriviaGame();
+    } else if (state.mode === "wheel") {
+      startWheelMode();
+    } else if (state.mode === "puzzle") {
+      startPuzzleMode();
+    } else {
+      setScreen("home");
+    }
   });
 
   // Modals
@@ -853,6 +880,85 @@ function setupEventListeners() {
       if (f && f.classList.contains("option")) f.click();
     }
   });
+  if (el.btnSound) {
+    el.btnSound.addEventListener("click", () => {
+      state.soundEnabled = !state.soundEnabled;
+      el.btnSound.textContent = state.soundEnabled
+        ? "🔊 Sonido: ON"
+        : "🔇 Sonido: OFF";
+    });
+  }
+  if (el.winnerForm) {
+    el.winnerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const payload = {
+        codigo_premio: state.codigoPremio,
+        cedula: document.getElementById("wf-cedula").value.trim(),
+        nombres: document.getElementById("wf-nombres").value.trim(),
+        apellidos: document.getElementById("wf-apellidos").value.trim(),
+        direccion: document.getElementById("wf-direccion").value.trim(),
+        telefono: document.getElementById("wf-telefono").value.trim(),
+        premio: state.premioActual ? state.premioActual.nombre : "",
+      };
+      try {
+        const res = await fetch("/api/registro", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("¡Registro exitoso!", "success");
+          if (el.wfShareOnSubmit && el.wfShareOnSubmit.checked) {
+            sendWhatsApp();
+          }
+        } else {
+          const msg = data.message || "Error al registrar";
+          showToast(msg, "error");
+          try {
+            if (/cedula|cédula/i.test(String(msg))) {
+              addAdminAlert("cedula_duplicada", {
+                cedula: payload.cedula,
+                codigo: payload.codigo_premio,
+              });
+            }
+          } catch (e) {}
+        }
+      } catch (err) {
+        showToast("Error de red al registrar", "error");
+      }
+    });
+  }
+  if (el.wfShareBtn) {
+    el.wfShareBtn.addEventListener("click", () => {
+      sendWhatsApp();
+    });
+  }
+}
+
+function showFinalWinnerCard(title, statsHtml) {
+  setScreen("final");
+  el.finalTitle.textContent = title || "¡Ganaste! 🎉";
+  if (statsHtml) el.finalStats.innerHTML = statsHtml;
+  el.finalCode.innerHTML = `
+    <strong>¡Felicidades!</strong><br>
+    Has ganado: <strong>${state.premioActual.nombre}</strong><br>
+    <div class="code">Código: ${state.codigoPremio}</div>
+    <small style="color: var(--azul); opacity: 0.8;">Presenta este código único para reclamar tu premio</small>
+  `;
+  if (el.winnerCard) {
+    el.winnerPrize.textContent = state.premioActual.nombre;
+    el.winnerCode.textContent = `Código: ${state.codigoPremio}`;
+    el.winnerCard.classList.remove("hidden");
+    if (el.wfOpenPage)
+      el.wfOpenPage.href = `/registro?codigo=${encodeURIComponent(
+        state.codigoPremio
+      )}&premio=${encodeURIComponent(state.premioActual.nombre)}`;
+    state.whatsappMessage = buildWhatsAppMessage(
+      state.premioActual.nombre,
+      state.codigoPremio
+    );
+  }
 }
 
 // ==================== MODE SELECTION ====================
@@ -867,37 +973,36 @@ function selectMode(mode) {
 
   el.triviaSelection.classList.toggle("hidden", mode !== "trivia");
   el.memorySelection.classList.toggle("hidden", mode !== "memory");
-  el.wheelSelection.classList.toggle("hidden", mode !== "wheel" && mode !== "puzzle");
+  el.wheelSelection.classList.toggle(
+    "hidden",
+    mode !== "wheel" && mode !== "puzzle"
+  );
 
-  // Reset selection
+  // Reset selection & Button State
+  el.btnStart.classList.remove("hidden");
+
   if (mode === "wheel") {
-      el.btnStart.disabled = false;
-      el.btnStart.textContent = "Ir a la Ruleta";
-      el.btnStart.classList.remove("hidden");
-      el.btnStart.onclick = startWheelMode;
+    el.btnStart.disabled = false;
+    el.btnStart.textContent = "Ir a la Ruleta";
   } else if (mode === "puzzle") {
-      el.btnStart.disabled = false;
-      el.btnStart.textContent = "Iniciar Puzzle";
-      el.btnStart.classList.remove("hidden");
-      el.btnStart.onclick = startPuzzleMode;
-  } else {
-      el.btnStart.disabled = true;
-      el.btnStart.textContent = "Iniciar Juego";
-      el.btnStart.onclick = startGame;
-      el.btnStart.classList.remove("hidden");
-  }
-
-  if (mode === "trivia") {
+    el.btnStart.disabled = false;
+    el.btnStart.textContent = "Iniciar Puzzle";
+  } else if (mode === "trivia") {
+    el.btnStart.textContent = "Iniciar Juego";
+    // Trivia requires pack selection
     document
       .querySelectorAll(".pack-card")
       .forEach((x) => x.classList.remove("selected"));
     state.pack = null;
+    el.btnStart.disabled = true;
   } else if (mode === "memory") {
+    el.btnStart.textContent = "Iniciar Juego";
+    // Memory requires level selection
     document
       .querySelectorAll("#memory-levels .pack-card")
       .forEach((x) => x.classList.remove("selected"));
     state.memoryLevel = null;
-    el.btnStart.classList.add("hidden"); // Memory shows levels directly
+    el.btnStart.disabled = true;
   }
 }
 
@@ -922,20 +1027,35 @@ function renderPacks() {
 }
 
 function setScreen(name) {
-  el.home.classList.toggle("hidden", name !== "home");
-  el.game.classList.toggle("hidden", name !== "game");
-  el.memory.classList.toggle("hidden", name !== "memory");
-  el.final.classList.toggle("hidden", name !== "final");
-  el.final.classList.toggle("hidden", name !== "final");
-  el.wheelScreen.classList.toggle("hidden", name !== "wheel");
-  el.puzzleScreen.classList.toggle("hidden", name !== "puzzle");
+  const screens = [
+    { el: el.home, key: "home" },
+    { el: el.game, key: "game" },
+    { el: el.memory, key: "memory" },
+    { el: el.final, key: "final" },
+    { el: el.wheelScreen, key: "wheel" },
+    { el: el.puzzleScreen, key: "puzzle" },
+  ];
+  screens.forEach(({ el: sEl, key }) => {
+    if (!sEl) return;
+    if (key === name) {
+      sEl.classList.add("active");
+      sEl.classList.remove("hidden");
+    } else {
+      sEl.classList.remove("active");
+      sEl.classList.add("hidden");
+    }
+  });
 }
 
 function startGame() {
   if (state.mode === "trivia") {
-    startTriviaGame();
-  } else {
-    startMemoryGame();
+    if (state.pack) startTriviaGame();
+  } else if (state.mode === "memory") {
+    if (state.memoryLevel) startMemoryGame();
+  } else if (state.mode === "wheel") {
+    startWheelMode();
+  } else if (state.mode === "puzzle") {
+    startPuzzleMode();
   }
 }
 
@@ -962,6 +1082,12 @@ function updateTriviaStatus() {
   const progress =
     (state.preguntasUsadas.size / state.pack.preguntas.length) * 100;
   el.progressBar.style.width = `${progress}%`;
+  if (el.progressLabel) {
+    el.progressLabel.textContent = `${Math.round(progress)}%`;
+  }
+  if (el.progressCount) {
+    el.progressCount.textContent = `${state.preguntasUsadas.size}/${state.pack.preguntas.length}`;
+  }
 }
 
 function nextQuestion() {
@@ -1034,19 +1160,24 @@ function selectOption(i, ans, btn) {
   clearInterval(state.timerInterval);
   const correct = i === ans;
   Array.from(el.options.children).forEach((c) => (c.disabled = true));
+  el.options.classList.add("disabled");
   btn.classList.add(correct ? "correct" : "incorrect");
 
   setTimeout(() => {
     if (correct) {
+      showToast("¡Correcto!", "success");
+      playSuccessSound();
       // Calculate score based on time taken
       const timeTaken = Math.floor(
         (Date.now() - state.questionStartTime) / 1000
       );
       const timeBonus = Math.max(0, 30 - timeTaken) * 10;
       const baseScore = 100;
-      state.score += baseScore + timeBonus;
+      const gained = baseScore + timeBonus;
+      state.score += gained;
       state.correctAnswers++;
       updateTriviaStatus();
+      showPointsBonus(gained);
 
       // Mostrar premio inmediatamente al alcanzar 3 respuestas correctas
       if (state.correctAnswers === 3 && !state.tuvoPremio) {
@@ -1055,15 +1186,93 @@ function selectOption(i, ans, btn) {
     } else {
       state.vidas -= 1;
       updateTriviaStatus();
+      showToast("Incorrecto", "error");
+      playErrorSound();
     }
     setTimeout(() => {
       if (state.vidas <= 0) {
         finishTrivia(false);
       } else {
+        el.options.classList.remove("disabled");
         nextQuestion();
       }
     }, 200);
   }, 300);
+}
+
+function showPointsBonus(amount) {
+  const parent = el.score;
+  const b = document.createElement("span");
+  b.className = "points-bonus";
+  b.textContent = `+${amount}`;
+  const rect = parent.getBoundingClientRect();
+  b.style.left = `${rect.left + window.scrollX + rect.width + 8}px`;
+  b.style.top = `${rect.top + window.scrollY}px`;
+  document.body.appendChild(b);
+  requestAnimationFrame(() => {
+    b.style.opacity = "1";
+    b.style.transform = "translateY(-24px)";
+  });
+  setTimeout(() => {
+    b.style.opacity = "0";
+    b.style.transform = "translateY(-48px)";
+    setTimeout(() => b.remove(), 300);
+  }, 900);
+  playScoreChime();
+}
+
+function ensureAudioCtx() {
+  if (!state.audioCtx) {
+    try {
+      state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {}
+  }
+  return state.audioCtx;
+}
+
+function playTone(freq, duration, type = "sine") {
+  if (!state.soundEnabled) return;
+  const ctx = ensureAudioCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ctx.currentTime);
+  gain.gain.setValueAtTime(state.volume, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + duration);
+}
+
+function playSuccessSound() {
+  playTone(880, 0.12, "sine");
+  setTimeout(() => playTone(1175, 0.12, "sine"), 120);
+  setTimeout(() => playTone(1320, 0.12, "sine"), 240);
+}
+
+function playErrorSound() {
+  playTone(220, 0.18, "sawtooth");
+  setTimeout(() => playTone(180, 0.18, "sawtooth"), 120);
+}
+
+function playScoreChime() {
+  playTone(1400, 0.12, "triangle");
+}
+
+function playWheelTick() {
+  if (!state.soundEnabled) return;
+  const ctx = ensureAudioCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(1200, ctx.currentTime);
+  gain.gain.setValueAtTime(Math.min(0.3, state.volume), ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.05);
 }
 
 function awardPrize() {
@@ -1132,12 +1341,7 @@ function finishTrivia(won) {
 
   // Mostrar código solo si ganó premio
   if (state.codigoPremio) {
-    el.finalCode.innerHTML = `
-      <strong>¡Felicidades!</strong><br>
-      Has ganado: <strong>${state.premioActual.nombre}</strong><br>
-      <div class="code">Código: ${state.codigoPremio}</div>
-      <small style="color: var(--azul); opacity: 0.8;">Presenta este código único para reclamar tu premio</small>
-    `;
+    showFinalWinnerCard(titleText, el.finalStats.innerHTML);
   } else if (state.correctAnswers < 3) {
     el.finalCode.innerHTML = `
       <p style="color: var(--azul); opacity: 0.9;">
@@ -1145,8 +1349,10 @@ function finishTrivia(won) {
         Obtuviste: <strong>${state.correctAnswers}</strong> correctas. ¡Inténtalo de nuevo!
       </p>
     `;
+    if (el.winnerCard) el.winnerCard.classList.add("hidden");
   } else {
     el.finalCode.textContent = "";
+    if (el.winnerCard) el.winnerCard.classList.add("hidden");
   }
 
   // Save to leaderboard
@@ -1186,10 +1392,15 @@ function renderMemoryLevels() {
 function startMemoryGame() {
   state.moves = 0;
   state.matchedPairs = 0;
-  state.memoryLives = 3; // Reiniciar vidas a 3
+  state.memoryLives =
+    state.memoryLevel && state.memoryLevel.lives ? state.memoryLevel.lives : 5;
   state.memoryScore = 0;
   state.memoryTimeElapsed = 0;
   state.flippedCards = [];
+  state.premioActual = null;
+  state.codigoPremio = null;
+  state.tuvoPremio = false;
+  if (el.winnerCard) el.winnerCard.classList.add("hidden");
 
   // Create shuffled card deck
   const pairs = memoryPairs.slice(0, state.memoryLevel.pairs);
@@ -1222,7 +1433,13 @@ function renderMemoryBoard() {
 }
 
 function updateMemoryStatus() {
-  el.memoryMoves.textContent = `❤️ Intentos: ${state.memoryLives}`;
+  const total =
+    state.memoryLevel && state.memoryLevel.lives
+      ? state.memoryLevel.lives
+      : state.memoryLives;
+  const heartsFull = "❤️".repeat(Math.max(0, state.memoryLives));
+  const heartsEmpty = "🤍".repeat(Math.max(0, total - state.memoryLives));
+  el.memoryMoves.innerHTML = `${heartsFull}${heartsEmpty} Intentos: ${state.memoryLives}`;
   el.memoryScore.textContent = `Puntos: ${state.memoryScore}`;
   el.memoryPairs.textContent = `Pares: ${state.matchedPairs}/${state.memoryLevel.pairs}`;
 }
@@ -1276,6 +1493,8 @@ function flipCard(index) {
         el.memoryBoard.children[idx1].classList.add("matched");
         el.memoryBoard.children[idx2].classList.add("matched");
         state.matchedPairs++;
+        showToast("¡Par encontrado!", "success");
+        playSuccessSound();
 
         // Calculate score
         const timeBonus =
@@ -1290,7 +1509,7 @@ function flipCard(index) {
         updateMemoryStatus();
         state.flippedCards = [];
 
-        // Mostrar premio inmediatamente al alcanzar 3 pares
+        // Premio al alcanzar 3 pares (cualquier nivel)
         if (state.matchedPairs === 3 && !state.tuvoPremio) {
           awardMemoryPrize();
         }
@@ -1313,6 +1532,8 @@ function flipCard(index) {
         // Restar una vida
         state.memoryLives--;
         updateMemoryStatus();
+        showToast("No coinciden", "error");
+        playErrorSound();
 
         // Verificar si se acabaron las vidas
         if (state.memoryLives <= 0) {
@@ -1335,6 +1556,14 @@ function awardMemoryPrize() {
   el.modalPrize.textContent = prize.nombre;
   el.modalCode.textContent = code;
   el.modal.classList.remove("hidden");
+  setTimeout(() => {
+    el.modal.classList.add("hidden");
+    const stats = `
+      <strong>Puntuación:</strong> ${state.memoryScore}<br>
+      <strong>Pares:</strong> ${state.matchedPairs}/${state.memoryLevel.pairs}
+    `;
+    showFinalWinnerCard("¡Premio en Memory! 🎉", stats);
+  }, 500);
 }
 
 function finishMemory(won) {
@@ -1370,7 +1599,25 @@ function finishMemory(won) {
     <strong>Pares encontrados:</strong> ${state.matchedPairs}/${state.memoryLevel.pairs}
   `;
 
-  el.finalCode.textContent = "";
+  if (won) {
+    if (!state.codigoPremio) {
+      const prize = pickPrize(premiosDisponibles);
+      if (prize) {
+        state.premioActual = prize;
+        state.codigoPremio = genCode();
+        state.tuvoPremio = true;
+      }
+    }
+    if (state.codigoPremio) {
+      showFinalWinnerCard(titleText, el.finalStats.innerHTML);
+    } else {
+      el.finalCode.textContent = "";
+      if (el.winnerCard) el.winnerCard.classList.add("hidden");
+    }
+  } else {
+    el.finalCode.textContent = "";
+    if (el.winnerCard) el.winnerCard.classList.add("hidden");
+  }
 
   // Save to leaderboard
   if (won) {
@@ -1470,468 +1717,576 @@ function toggleFullscreen() {
 // ==================== WHEEL LOGIC ====================
 
 async function startWheelMode() {
-    setScreen("wheel");
-    await initWheel();
+  state.premioActual = null;
+  state.codigoPremio = null;
+  state.tuvoPremio = false;
+  if (el.winnerCard) el.winnerCard.classList.add("hidden");
+  setScreen("wheel");
+  await initWheel();
 }
 
 async function initWheel() {
-    // Definir segmentos
-    state.wheelSegments = [];
-    
-    // 1. Agregar categorías de preguntas disponibles
-    if (packs && packs.length > 0) {
-        packs.forEach(p => {
-            const label = p.nombre || "Pregunta";
-            state.wheelSegments.push({ 
-                type: 'question', 
-                text: label.substring(0, 15), 
-                data: p, 
-                color: getRandomColor()
-            });
-        });
+  // Definir segmentos basados EXCLUSIVAMENTE en configuración de DB
+  state.wheelSegments = [];
+  let extraSegments = [];
+  try {
+    const res = await fetch("/api/public/ruleta-config");
+    const data = await res.json();
+    if (data.success && data.config.length > 0) {
+      extraSegments = data.config.map((c) => ({
+        type: c.tipo === "premio" ? "prize" : c.tipo,
+        text: c.texto,
+        color: c.color,
+        data: null,
+      }));
     }
+  } catch (e) {
+    console.error("Error cargando config ruleta", e);
+  }
 
-    // 2. Fetch de configuración dinámica
-    let extraSegments = [];
-    try {
-        const res = await fetch("/api/public/ruleta-config");
-        const data = await res.json();
-        if (data.success && data.config.length > 0) {
-            extraSegments = data.config.map(c => ({
-                type: c.tipo,
-                text: c.texto,
-                color: c.color
-            }));
-        }
-    } catch (e) {
-        console.error("Error cargando config ruleta", e);
-    }
+  // Usar únicamente los segmentos configurados
+  state.wheelSegments = extraSegments.slice();
 
-    // Mezclar y agregar extras
-    extraSegments.forEach(seg => {
-        state.wheelSegments.push({ ...seg, data: null });
-    });
-    
-    // 3. Si aún hay pocos segmentos (menos de 8), duplicar existentes
-    // Priorizar duplicar PREMIO y Categorías
-    while (state.wheelSegments.length < 8) {
-         const original = state.wheelSegments[state.wheelSegments.length % 2]; 
-         state.wheelSegments.push({ ...original, color: getRandomColor() });
-    }
+  if (!state.wheelSegments.length) {
+    showToast("No hay configuración activa de ruleta", "error");
+    el.btnSpin.disabled = true;
+    return;
+  }
 
-    // Shuffle segments for better distribution
-    for (let i = state.wheelSegments.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [state.wheelSegments[i], state.wheelSegments[j]] = [state.wheelSegments[j], state.wheelSegments[i]];
-    }
+  // Shuffle segments for better distribution
+  for (let i = state.wheelSegments.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [state.wheelSegments[i], state.wheelSegments[j]] = [
+      state.wheelSegments[j],
+      state.wheelSegments[i],
+    ];
+  }
 
-    state.wheelLives = 3;
-    updateWheelStatus();
+  state.wheelLives = 3;
+  updateWheelStatus();
 
-    state.wheelCtx = el.wheelCanvas.getContext("2d");
-    drawWheel();
+  state.wheelCtx = el.wheelCanvas.getContext("2d");
+  drawWheel();
 }
 
 function updateWheelStatus() {
-    el.wheelLives.textContent = `Giros: ${state.wheelLives}`;
-    // el.wheelScore.textContent = ... if we had score
+  el.wheelLives.textContent = `Giros: ${state.wheelLives}`;
+  // el.wheelScore.textContent = ... if we had score
 }
 
 function getRandomColor() {
-    const colors = ['#1986c8', '#1eb8d1', '#008037', '#0d1419', '#4caf50', '#2196f3', '#9c27b0', '#ff5722'];
-    return colors[Math.floor(Math.random() * colors.length)];
+  const colors = [
+    "#1986c8",
+    "#1eb8d1",
+    "#008037",
+    "#0d1419",
+    "#4caf50",
+    "#2196f3",
+    "#9c27b0",
+    "#ff5722",
+  ];
+  return colors[Math.floor(Math.random() * colors.length)];
 }
 
 function drawWheel() {
-    if (!state.wheelCtx) return;
-    const ctx = state.wheelCtx;
-    const width = el.wheelCanvas.width;
-    const height = el.wheelCanvas.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(centerX, centerY) - 10;
-    const segments = state.wheelSegments.length;
-    const arcSize = (2 * Math.PI) / segments;
+  if (!state.wheelCtx) return;
+  const ctx = state.wheelCtx;
+  const width = el.wheelCanvas.width;
+  const height = el.wheelCanvas.height;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = Math.min(centerX, centerY) - 10;
+  const segments = state.wheelSegments.length;
+  const arcSize = (2 * Math.PI) / segments;
 
-    ctx.clearRect(0, 0, width, height);
-    
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(state.wheelRotation);
+  ctx.clearRect(0, 0, width, height);
 
-    for (let i = 0; i < segments; i++) {
-        const angle = i * arcSize;
-        const segment = state.wheelSegments[i];
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate(state.wheelRotation);
 
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, radius, angle, angle + arcSize);
-        ctx.fillStyle = segment.color;
-        ctx.fill();
-        ctx.stroke();
+  for (let i = 0; i < segments; i++) {
+    const angle = i * arcSize;
+    const segment = state.wheelSegments[i];
 
-        ctx.save();
-        ctx.rotate(angle + arcSize / 2);
-        ctx.textAlign = "right";
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 18px Arial";
-        ctx.fillText(segment.text, radius - 20, 5);
-        ctx.restore();
-    }
-    
-    ctx.restore();
-    
-    // Draw Center Circle
     ctx.beginPath();
-    ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
-    ctx.fillStyle = "#fff";
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, radius, angle, angle + arcSize);
+    ctx.fillStyle = segment.color;
     ctx.fill();
     ctx.stroke();
+
+    ctx.save();
+    ctx.rotate(angle + arcSize / 2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 18px Arial";
+    ctx.fillText(segment.text, radius - 20, 5);
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  // Draw Center Circle
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.stroke();
 }
 
 function spinWheel() {
-    if (state.isSpinning) return;
-    if (state.wheelLives <= 0) {
-        showToast("¡Te has quedado sin giros!", "error");
-        return;
+  if (state.isSpinning) return;
+  if (state.wheelLives <= 0) {
+    showToast("¡Te has quedado sin giros!", "error");
+    return;
+  }
+
+  state.wheelLives--;
+  updateWheelStatus();
+
+  state.isSpinning = true;
+  el.btnSpin.disabled = true;
+  state.wheelLastTickIndex = null;
+
+  // Duración aleatoria entre 3 y 5 segundos
+  const duration = 4000 + Math.random() * 2000;
+  const startRotation = state.wheelRotation;
+  // Rotar al menos 5 vueltas completas + un extra aleatorio
+  const totalRotation =
+    startRotation + 10 * Math.PI + Math.random() * 10 * Math.PI;
+  const startTime = performance.now();
+
+  function animate(time) {
+    const elapsed = time - startTime;
+    const t = Math.min(elapsed / duration, 1);
+
+    // Easing function: cubic-bezier out
+    const easeOut = 1 - Math.pow(1 - t, 3);
+
+    state.wheelRotation =
+      startRotation + (totalRotation - startRotation) * easeOut;
+    drawWheel();
+
+    const segments = state.wheelSegments.length;
+    const arcSize = (2 * Math.PI) / segments;
+    let pointerAngle =
+      (3 * Math.PI) / 2 - (state.wheelRotation % (2 * Math.PI));
+    while (pointerAngle < 0) pointerAngle += 2 * Math.PI;
+    const index = Math.floor(pointerAngle / arcSize) % segments;
+    if (index !== state.wheelLastTickIndex) {
+      state.wheelLastTickIndex = index;
+      playWheelTick();
     }
 
-    state.wheelLives--;
-    updateWheelStatus();
-
-    state.isSpinning = true;
-    el.btnSpin.disabled = true;
-
-    // Duración aleatoria entre 3 y 5 segundos
-    const duration = 4000 + Math.random() * 2000; 
-    const startRotation = state.wheelRotation;
-    // Rotar al menos 5 vueltas completas + un extra aleatorio
-    const totalRotation = startRotation + (10 * Math.PI) + (Math.random() * 10 * Math.PI);
-    const startTime = performance.now();
-
-    function animate(time) {
-        const elapsed = time - startTime;
-        const t = Math.min(elapsed / duration, 1);
-        
-        // Easing function: cubic-bezier out
-        const easeOut = 1 - Math.pow(1 - t, 3);
-        
-        state.wheelRotation = startRotation + (totalRotation - startRotation) * easeOut;
-        drawWheel();
-
-        if (t < 1) {
-            requestAnimationFrame(animate);
-        } else {
-            state.isSpinning = false;
-            el.btnSpin.disabled = false;
-            determineWheelResult();
-        }
+    if (t < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      state.isSpinning = false;
+      el.btnSpin.disabled = false;
+      determineWheelResult();
     }
+  }
 
-    requestAnimationFrame(animate);
+  requestAnimationFrame(animate);
 }
 
 function determineWheelResult() {
-    const segments = state.wheelSegments.length;
-    const arcSize = (2 * Math.PI) / segments;
-    // Normalizar rotación entre 0 y 2PI
-    const currentRotation = state.wheelRotation % (2 * Math.PI);
-    
-    // La flecha está arriba (270 grados o -90 grados, que es 1.5 PI)
-    // Calcular qué segmento está tocando la flecha
-    // Ajuste matemático: 
-    // Angulo de flecha efectivo considerando la rotación: (2*Math.PI - currentRotation + 1.5*Math.PI) % 2*Math.PI
-    // Simplificado: Index se basa en (TotalAngle - HandAngle)
-    
-    // Método simple: calcular angulo recorrido
-    let pointerAngle = (3 * Math.PI / 2) - currentRotation;
-    while (pointerAngle < 0) pointerAngle += 2 * Math.PI;
-    
-    const index = Math.floor(pointerAngle / arcSize) % segments;
-    const result = state.wheelSegments[index];
-    
-    if (result.type === 'question') {
-        launchWheelQuestion(result.data);
-    } else if (result.type === 'prize') {
-        giveRandomPrize();
-    } else if (result.type === 'retry') {
-        showToast("¡Ups! Cuenta como giro.", "info");
-        checkWheelGameEnd();
-    }
+  const segments = state.wheelSegments.length;
+  const arcSize = (2 * Math.PI) / segments;
+  // Normalizar rotación entre 0 y 2PI
+  const currentRotation = state.wheelRotation % (2 * Math.PI);
+
+  // La flecha está arriba (270 grados o -90 grados, que es 1.5 PI)
+  // Calcular qué segmento está tocando la flecha
+  // Ajuste matemático:
+  // Angulo de flecha efectivo considerando la rotación: (2*Math.PI - currentRotation + 1.5*Math.PI) % 2*Math.PI
+  // Simplificado: Index se basa en (TotalAngle - HandAngle)
+
+  // Método simple: calcular angulo recorrido
+  let pointerAngle = (3 * Math.PI) / 2 - currentRotation;
+  while (pointerAngle < 0) pointerAngle += 2 * Math.PI;
+
+  const index = Math.floor(pointerAngle / arcSize) % segments;
+  const result = state.wheelSegments[index];
+
+  if (result.type === "question") {
+    state.currentSegmentText = result.text;
+    launchWheelQuestion(result.data);
+  } else if (result.type === "prize") {
+    giveRandomPrize();
+  } else if (result.type === "retry") {
+    showToast("¡Ups! Cuenta como giro.", "info");
+    checkWheelGameEnd();
+  }
 }
 
 function checkWheelGameEnd() {
-    if (state.wheelLives > 0) {
-        el.btnSpin.disabled = false;
-    } else {
-        setTimeout(() => {
-            showToast("Juego Terminado", "info");
-             // Maybe show summary or return home
-             setTimeout(() => setScreen("home"), 2000);
-        }, 1500);
-    }
+  if (state.wheelLives > 0) {
+    el.btnSpin.disabled = false;
+  } else {
+    setTimeout(() => {
+      showToast("Juego Terminado", "info");
+      // Maybe show summary or return home
+      setTimeout(() => setScreen("home"), 2000);
+    }, 1500);
+  }
 }
 
 function launchWheelQuestion(pack) {
-    // Configurar estado para una sola pregunta
-    state.pack = pack;
-    // Seleccionar pregunta aleatoria
-    const randomIndex = Math.floor(Math.random() * pack.preguntas.length);
-    state.indicePregunta = randomIndex; 
-    
-    // Mostrar modal con la pregunta (reusando UI de Trivia o un modal custom)
-    // Para simpleza, usaremos una alerta visual o cambiaremos temporalmente a la pantalla de juego con 1 sola vida/pregunta
-    // Mejor: mostramos un Modal
-    
-    state.currentQuestion = pack.preguntas[randomIndex];
-    
-    // Usar el modal genérico para mostrar la pregunta
-    el.modal.classList.remove("hidden");
-    const modalContent = el.modal.querySelector(".modal-content");
-    
-    // Render Question in Modal
-    modalContent.innerHTML = `
+  // Permitir que 'pack' sea null y elegir por texto de segmento o aleatorio
+  let usePack = pack;
+  if (!usePack) {
+    const segText = state.currentSegmentText || "";
+    usePack = (packs || []).find((p) =>
+      String(p.nombre || "")
+        .toLowerCase()
+        .includes(String(segText).toLowerCase())
+    );
+    if (!usePack && Array.isArray(packs) && packs.length) {
+      usePack = packs[Math.floor(Math.random() * packs.length)];
+    }
+  }
+  if (!usePack || !usePack.preguntas || !usePack.preguntas.length) {
+    showToast("No hay preguntas disponibles", "error");
+    return;
+  }
+  state.pack = usePack;
+  const randomIndex = Math.floor(Math.random() * usePack.preguntas.length);
+  state.indicePregunta = randomIndex;
+
+  // Mostrar modal con la pregunta (reusando UI de Trivia o un modal custom)
+  // Para simpleza, usaremos una alerta visual o cambiaremos temporalmente a la pantalla de juego con 1 sola vida/pregunta
+  // Mejor: mostramos un Modal
+
+  state.currentQuestion = pack.preguntas[randomIndex];
+  state.currentSegmentText = null;
+
+  // Usar el modal genérico para mostrar la pregunta
+  el.modal.classList.remove("hidden");
+  const modalContent = el.modal.querySelector(".modal-content");
+
+  // Render Question in Modal
+  modalContent.innerHTML = `
         <h3>${pack.nombre}</h3>
         <p class="question" style="font-size:20px; color:white;">${state.currentQuestion.q}</p>
         <div id="wheel-options" class="options" style="margin-top:20px;"></div>
     `;
-    
-    const optsContainer = document.getElementById("wheel-options");
-    state.currentQuestion.o.forEach((optText, idx) => {
-        const btn = document.createElement("button");
-        btn.className = "option";
-        btn.textContent = optText;
-        btn.onclick = () => checkWheelAnswer(idx, btn);
-        optsContainer.appendChild(btn);
-    });
+
+  const optsContainer = document.getElementById("wheel-options");
+  state.currentQuestion.o.forEach((optText, idx) => {
+    const btn = document.createElement("button");
+    btn.className = "option";
+    btn.textContent = optText;
+    btn.onclick = () => checkWheelAnswer(idx, btn);
+    optsContainer.appendChild(btn);
+  });
 }
 
 function checkWheelAnswer(selectedIndex, btnElement) {
-    const correctIndex = state.currentQuestion.a;
-    if (selectedIndex === correctIndex) {
-        btnElement.classList.add("correct");
-        setTimeout(() => {
-            el.modal.classList.add("hidden");
-            // Dar premio o puntos
-            giveRandomPrize(); // Ganó la pregunta -> Premio
-            showToast("¡Respuesta Correcta!", "success");
-            checkWheelGameEnd();
-        }, 1000);
-    } else {
-        btnElement.classList.add("incorrect");
-        setTimeout(() => {
-             el.modal.classList.add("hidden");
-             showToast("Respuesta Incorrecta", "error");
-             checkWheelGameEnd();
-        }, 1000);
-    }
+  const correctIndex = state.currentQuestion.a;
+  if (selectedIndex === correctIndex) {
+    btnElement.classList.add("correct");
+    setTimeout(() => {
+      el.modal.classList.add("hidden");
+      // Dar premio o puntos
+      giveRandomPrize(); // Ganó la pregunta -> Premio
+      showToast("¡Respuesta Correcta!", "success");
+      checkWheelGameEnd();
+    }, 1000);
+  } else {
+    btnElement.classList.add("incorrect");
+    setTimeout(() => {
+      el.modal.classList.add("hidden");
+      showToast("Respuesta Incorrecta", "error");
+      checkWheelGameEnd();
+    }, 1000);
+  }
 }
 
 function giveRandomPrize() {
-    // Lógica existente de premios
-    const rand = Math.random();
-    let acumulado = 0;
-    let seleccionado = null;
+  // Lógica existente de premios
+  const rand = Math.random();
+  let acumulado = 0;
+  let seleccionado = null;
 
-    if (premiosDisponibles.length === 0) {
-        // Mostrar premio genérico si no hay stock
-        state.premioActual = { nombre: "Descuento Especial" };
-        state.codigoPremio = genCode();
-        state.tuvoPremio = true;
-        el.modalPrize.textContent = "Descuento Especial";
-        el.modalCode.textContent = state.codigoPremio;
-        el.modal.classList.remove("hidden");
-        return;
-    }
-
-    for (const p of premiosDisponibles) {
-        acumulado += p.probabilidad;
-        if (rand < acumulado) {
-            seleccionado = p;
-            break;
-        }
-    }
-    
-    if (!seleccionado) seleccionado = premiosDisponibles[premiosDisponibles.length - 1];
-    
-    state.premioActual = seleccionado;
+  if (premiosDisponibles.length === 0) {
+    // Mostrar premio genérico si no hay stock
+    state.premioActual = { nombre: "Descuento Especial" };
     state.codigoPremio = genCode();
     state.tuvoPremio = true;
-    el.modalPrize.textContent = seleccionado.nombre;
+    el.modalPrize.textContent = "Descuento Especial";
     el.modalCode.textContent = state.codigoPremio;
     el.modal.classList.remove("hidden");
-    
-    // Si viene de la ruleta, verificar fin de juego al cerrar modal?
-    // Por simplicidad, el modal bloquea, al cerrarlo el usuario ve el boton deshabilitado si vidas=0
-    if (state.mode === 'wheel') checkWheelGameEnd();
+    return;
+  }
+
+  for (const p of premiosDisponibles) {
+    acumulado += p.probabilidad;
+    if (rand < acumulado) {
+      seleccionado = p;
+      break;
+    }
+  }
+
+  if (!seleccionado)
+    seleccionado = premiosDisponibles[premiosDisponibles.length - 1];
+
+  state.premioActual = seleccionado;
+  state.codigoPremio = genCode();
+  state.tuvoPremio = true;
+  playSuccessSound();
+  el.modalPrize.textContent = seleccionado.nombre;
+  el.modalCode.textContent = state.codigoPremio;
+  el.modal.classList.remove("hidden");
+
+  // Llevar a pantalla final con formulario en juegos no-trivia
+  setTimeout(() => {
+    el.modal.classList.add("hidden");
+    if (state.mode === "wheel") {
+      const stats = `
+        <strong>Intentos restantes:</strong> ${state.wheelLives}
+      `;
+      showFinalWinnerCard("¡Ganaste en la ruleta! 🎉", stats);
+    } else if (state.mode === "puzzle") {
+      const t = 60 - state.puzzleTimeLeft;
+      const stats = `
+        <strong>Tiempo:</strong> ${t}s<br>
+        <strong>Movimientos:</strong> ${state.puzzleMoves}
+      `;
+      showFinalWinnerCard("¡Puzzle completado! 🎉", stats);
+    }
+  }, 500);
+
+  // Si viene de la ruleta, verificar fin de juego al cerrar modal?
+  // Por simplicidad, el modal bloquea, al cerrarlo el usuario ve el boton deshabilitado si vidas=0
+  if (state.mode === "wheel") checkWheelGameEnd();
 }
 
 function showToast(message, type) {
-    // Basic toast reuse or implementation
-    console.log(type, message);
+  let c = document.getElementById("toast-container");
+  if (!c) {
+    c = document.createElement("div");
+    c.id = "toast-container";
+    c.className = "toast-container";
+    document.body.appendChild(c);
+  }
+  const t = document.createElement("div");
+  t.className = "toast" + (type ? " toast-" + type : "");
+  t.textContent = String(message || "");
+  c.appendChild(t);
+  requestAnimationFrame(() => t.classList.add("visible"));
+  setTimeout(() => {
+    t.classList.remove("visible");
+    setTimeout(() => t.remove(), 250);
+  }, 2500);
 }
 
 // ==================== START ====================
 // ==================== PUZZLE LOGIC ====================
 
 function startPuzzleMode() {
-    setScreen("puzzle");
-    initPuzzle();
+  state.premioActual = null;
+  state.codigoPremio = null;
+  state.tuvoPremio = false;
+  if (el.winnerCard) el.winnerCard.classList.add("hidden");
+  setScreen("puzzle");
+  initPuzzle();
 }
 
 function initPuzzle() {
-    state.puzzleTimeLeft = 60;
-    state.puzzleMoves = 0;
-    state.puzzleGrid = [0, 1, 2, 3, 4, 5, 6, 7, 8];
-    // Shuffle simple ensuring solvability (or just random swaps)
-    // For 3x3 simple swap puzzle, just shuffle array.
-    for (let i = state.puzzleGrid.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [state.puzzleGrid[i], state.puzzleGrid[j]] = [state.puzzleGrid[j], state.puzzleGrid[i]];
+  state.puzzleTimeLeft = 60;
+  state.puzzleMoves = 0;
+  state.puzzleGrid = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  // Shuffle simple ensuring solvability (or just random swaps)
+  // For 3x3 simple swap puzzle, just shuffle array.
+  for (let i = state.puzzleGrid.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [state.puzzleGrid[i], state.puzzleGrid[j]] = [
+      state.puzzleGrid[j],
+      state.puzzleGrid[i],
+    ];
+  }
+
+  renderPuzzleBoard();
+  updatePuzzleStatus();
+
+  clearInterval(state.puzzleTimerInterval);
+  state.puzzleTimerInterval = setInterval(() => {
+    state.puzzleTimeLeft--;
+    el.puzzleTimer.textContent = `${state.puzzleTimeLeft}s`;
+    if (state.puzzleTimeLeft <= 0) {
+      finishPuzzle(false);
     }
-
-    renderPuzzleBoard();
-    updatePuzzleStatus();
-
-    clearInterval(state.puzzleTimerInterval);
-    state.puzzleTimerInterval = setInterval(() => {
-        state.puzzleTimeLeft--;
-        el.puzzleTimer.textContent = `${state.puzzleTimeLeft}s`;
-        if (state.puzzleTimeLeft <= 0) {
-            finishPuzzle(false);
-        }
-    }, 1000);
+  }, 1000);
 }
 
 function updatePuzzleStatus() {
-    el.puzzleScore.textContent = `Movimientos: ${state.puzzleMoves}`;
+  el.puzzleScore.textContent = `Movimientos: ${state.puzzleMoves}`;
 }
 
 function renderPuzzleBoard() {
-    el.puzzleBoard.innerHTML = "";
-    state.puzzleGrid.forEach((val, index) => {
-        const piece = document.createElement("div");
-        piece.className = "puzzle-piece";
-        piece.draggable = true;
-        piece.dataset.index = index;
-        piece.dataset.val = val; 
-        
-        // Calculate background position
-        // val is 0-8. Grid is 3x3.
-        // Row = val / 3 (integer), Col = val % 3
-        const row = Math.floor(val / 3);
-        const col = val % 3;
-        // Background positions: 0% 0%, 50% 0%, 100% 0% ...
-        // Size is 300x300. Each piece is 100x100.
-        // So bg position is -100*col px -100*row px
-        piece.style.backgroundPosition = `-${col * 100}px -${row * 100}px`;
+  el.puzzleBoard.innerHTML = "";
+  state.puzzleGrid.forEach((val, index) => {
+    const piece = document.createElement("div");
+    piece.className = "puzzle-piece";
+    piece.draggable = true;
+    piece.dataset.index = index;
+    piece.dataset.val = val;
 
-        if (isPuzzleSolved()) {
-             piece.draggable = false;
-             piece.classList.add("correct");
-        }
+    // Calculate background position
+    // val is 0-8. Grid is 3x3.
+    // Row = val / 3 (integer), Col = val % 3
+    const row = Math.floor(val / 3);
+    const col = val % 3;
+    // Background positions: 0% 0%, 50% 0%, 100% 0% ...
+    // Size is 300x300. Each piece is 100x100.
+    // So bg position is -100*col px -100*row px
+    piece.style.backgroundPosition = `-${col * 100}px -${row * 100}px`;
 
-        piece.addEventListener("dragstart", handleDragStart);
-        piece.addEventListener("dragover", handleDragOver);
-        piece.addEventListener("drop", handleDrop);
-        
-        // Touch events for mobile
-        piece.addEventListener("touchstart", handleTouchStart, {passive: false});
-        piece.addEventListener("touchmove", handleTouchMove, {passive: false});
-        piece.addEventListener("touchend", handleTouchEnd);
+    if (isPuzzleSolved()) {
+      piece.draggable = false;
+      piece.classList.add("correct");
+    }
 
-        el.puzzleBoard.appendChild(piece);
-    });
+    piece.addEventListener("dragstart", handleDragStart);
+    piece.addEventListener("dragover", handleDragOver);
+    piece.addEventListener("drop", handleDrop);
+
+    // Touch events for mobile
+    piece.addEventListener("touchstart", handleTouchStart, { passive: false });
+    piece.addEventListener("touchmove", handleTouchMove, { passive: false });
+    piece.addEventListener("touchend", handleTouchEnd);
+
+    el.puzzleBoard.appendChild(piece);
+  });
 }
 
 function handleDragStart(e) {
-    state.draggedPiece = e.target;
-    e.dataTransfer.setData("text/plain", e.target.dataset.index);
-    e.target.classList.add("dragging");
+  state.draggedPiece = e.target;
+  e.dataTransfer.setData("text/plain", e.target.dataset.index);
+  e.target.classList.add("dragging");
 }
 
 function handleDragOver(e) {
-    e.preventDefault(); // Necessary to allow dropping
+  e.preventDefault(); // Necessary to allow dropping
 }
 
 function handleDrop(e) {
-    e.preventDefault();
-    const target = e.target;
-    if (!target.classList.contains("puzzle-piece")) return;
-    
-    const fromIndex = parseInt(state.draggedPiece.dataset.index);
-    const toIndex = parseInt(target.dataset.index);
-    
-    if (fromIndex !== toIndex) {
-        swapPieces(fromIndex, toIndex);
-    }
-    
-    state.draggedPiece.classList.remove("dragging");
-    state.draggedPiece = null;
+  e.preventDefault();
+  const target = e.target;
+  if (!target.classList.contains("puzzle-piece")) return;
+
+  const fromIndex = parseInt(state.draggedPiece.dataset.index);
+  const toIndex = parseInt(target.dataset.index);
+
+  if (fromIndex !== toIndex) {
+    swapPieces(fromIndex, toIndex);
+  }
+
+  state.draggedPiece.classList.remove("dragging");
+  state.draggedPiece = null;
 }
 
 // Touch support implementation simplified: select first, tap second to swap
 let selectedTouchPiece = null;
 function handleTouchStart(e) {
-    // e.preventDefault();
-    // Simple tap-to-swap logic for touch
-    const target = e.target;
-    if (!target.classList.contains("puzzle-piece")) return;
-    
-    if (!selectedTouchPiece) {
-        selectedTouchPiece = target;
-        target.classList.add("dragging"); // Reusing style for selection
-    } else {
-        const fromIndex = parseInt(selectedTouchPiece.dataset.index);
-        const toIndex = parseInt(target.dataset.index);
-        
-        if (fromIndex !== toIndex) {
-            swapPieces(fromIndex, toIndex);
-        }
-        
-        selectedTouchPiece.classList.remove("dragging");
-        selectedTouchPiece = null;
+  // e.preventDefault();
+  // Simple tap-to-swap logic for touch
+  const target = e.target;
+  if (!target.classList.contains("puzzle-piece")) return;
+
+  if (!selectedTouchPiece) {
+    selectedTouchPiece = target;
+    target.classList.add("dragging"); // Reusing style for selection
+  } else {
+    const fromIndex = parseInt(selectedTouchPiece.dataset.index);
+    const toIndex = parseInt(target.dataset.index);
+
+    if (fromIndex !== toIndex) {
+      swapPieces(fromIndex, toIndex);
     }
+
+    selectedTouchPiece.classList.remove("dragging");
+    selectedTouchPiece = null;
+  }
 }
-function handleTouchMove(e) { e.preventDefault(); }
+function handleTouchMove(e) {
+  e.preventDefault();
+}
 function handleTouchEnd(e) {}
 
 function swapPieces(fromIdx, toIdx) {
-    // Audio feedback could be here
-    [state.puzzleGrid[fromIdx], state.puzzleGrid[toIdx]] = [state.puzzleGrid[toIdx], state.puzzleGrid[fromIdx]];
-    state.puzzleMoves++;
-    renderPuzzleBoard();
-    updatePuzzleStatus();
-    
-    checkPuzzleWin();
+  // Audio feedback could be here
+  [state.puzzleGrid[fromIdx], state.puzzleGrid[toIdx]] = [
+    state.puzzleGrid[toIdx],
+    state.puzzleGrid[fromIdx],
+  ];
+  state.puzzleMoves++;
+  renderPuzzleBoard();
+  updatePuzzleStatus();
+
+  checkPuzzleWin();
 }
 
 function isPuzzleSolved() {
-    for (let i = 0; i < state.puzzleGrid.length; i++) {
-        if (state.puzzleGrid[i] !== i) return false;
-    }
-    return true;
+  for (let i = 0; i < state.puzzleGrid.length; i++) {
+    if (state.puzzleGrid[i] !== i) return false;
+  }
+  return true;
 }
 
 function checkPuzzleWin() {
-    if (isPuzzleSolved()) {
-        clearInterval(state.puzzleTimerInterval);
-        setTimeout(() => finishPuzzle(true), 500);
-    }
+  if (isPuzzleSolved()) {
+    clearInterval(state.puzzleTimerInterval);
+    setTimeout(() => finishPuzzle(true), 500);
+  }
 }
 
 function finishPuzzle(won) {
-    clearInterval(state.puzzleTimerInterval);
-    if (won) {
-        // Show Win Modal or just alert
-        showToast(`¡Puzzle Completado! en ${60 - state.puzzleTimeLeft}s`, "success");
-        setTimeout(() => {
-            giveRandomPrize(); // Reuse prize logic
-        }, 1000);
-    } else {
-        showToast("Tiempo agotado. ¡Inténtalo de nuevo!", "error");
-        setTimeout(() => setScreen("home"), 2000);
-    }
+  clearInterval(state.puzzleTimerInterval);
+  if (won) {
+    // Show Win Modal or just alert
+    showToast(
+      `¡Puzzle Completado! en ${60 - state.puzzleTimeLeft}s`,
+      "success"
+    );
+    playSuccessSound();
+    setTimeout(() => {
+      giveRandomPrize(); // Reuse prize logic
+    }, 1000);
+  } else {
+    showToast("Tiempo agotado. ¡Inténtalo de nuevo!", "error");
+    playErrorSound();
+    setTimeout(() => setScreen("home"), 2000);
+  }
 }
 
 init();
+function buildWhatsAppMessage(premio, codigo) {
+  return (
+    "DH2OCOL - Cuidamos tu agua, cuidamos tu salud\n" +
+    `Has obtenido un premio: ${premio}\n` +
+    `Código: ${codigo}\n` +
+    "Validez del premio: Entre 15 y 30 días calendario\n" +
+    "Para canjear, presenta este código en nuestras oficinas.\n" +
+    "Gracias por participar."
+  );
+}
+
+function sendWhatsApp() {
+  const premio = state.premioActual ? state.premioActual.nombre : "Premio";
+  const codigo = state.codigoPremio || "";
+  const msg = state.whatsappMessage || buildWhatsAppMessage(premio, codigo);
+  const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(url, "_blank");
+}
+
+function addAdminAlert(type, payload) {
+  try {
+    const k = "adminAlerts";
+    const list = JSON.parse(localStorage.getItem(k) || "[]");
+    list.push({ type, payload, ts: Date.now() });
+    localStorage.setItem(k, JSON.stringify(list));
+  } catch (e) {}
+}

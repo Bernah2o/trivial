@@ -36,6 +36,7 @@
     </div>
 
     <div class="container">
+      <div id="admin-alerts" style="margin-bottom:12px"></div>
       <div class="controls">
         <div class="search-box">
           <input
@@ -137,5 +138,25 @@
     <!-- SheetJS for Excel export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="/assets/js/admin.js" defer></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        try {
+          const raw = localStorage.getItem('adminAlerts');
+          if (!raw) return;
+          const alerts = JSON.parse(raw) || [];
+          if (!alerts.length) return;
+          const box = document.getElementById('admin-alerts');
+          alerts.forEach(a => {
+            const d = document.createElement('div');
+            d.className = 'alert alert-error';
+            const ced = a && a.payload ? a.payload.cedula : '';
+            const cod = a && a.payload ? a.payload.codigo : '';
+            d.textContent = `Alerta: cédula ya registrada (${ced}) intento con código ${cod}`;
+            box.appendChild(d);
+          });
+          localStorage.removeItem('adminAlerts');
+        } catch (e) {}
+      });
+    </script>
   </body>
 </html>

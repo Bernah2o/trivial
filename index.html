@@ -63,7 +63,7 @@
       <!-- HOME SCREEN -->
       <section id="screen-home" class="screen active">
         <h1>Centro de Juegos DH2OCOL</h1>
-        
+
         <div class="game-modes">
           <h2>Selecciona un modo de juego</h2>
           <div class="mode-selector">
@@ -95,11 +95,13 @@
           <h2>Selecciona una trivia</h2>
           <div id="packs-list" class="packs-list" role="list"></div>
         </div>
-        
+
         <!-- WHEEL / PUZZLE SELECTION -->
         <div id="wheel-selection" class="packs hidden">
-            <h2>Modo Ruleta y Puzzle</h2>
-            <p style="text-align:center; margin-bottom: 20px;">Presiona iniciar para comenzar el desafío.</p>
+          <h2>Modo Ruleta y Puzzle</h2>
+          <p style="text-align: center; margin-bottom: 20px">
+            Presiona iniciar para comenzar el desafío.
+          </p>
         </div>
 
         <!-- MEMORY MODE SELECTION -->
@@ -111,6 +113,7 @@
         <div class="actions">
           <button id="btn-leaderboard" class="btn">🏆 Mejores Puntajes</button>
           <button id="btn-fullscreen" class="btn">Pantalla completa</button>
+          <button id="btn-sound" class="btn">🔊 Sonido: ON</button>
           <button id="btn-start" class="btn btn-primary" disabled>
             Iniciar Juego
           </button>
@@ -131,6 +134,8 @@
           </div>
           <div class="progress-container">
             <div id="progress-bar" class="progress-bar"></div>
+            <span id="progress-label" class="progress-label">0%</span>
+            <span id="progress-count" class="progress-count">0/0</span>
           </div>
           <div id="timer" class="timer">30s</div>
         </div>
@@ -140,19 +145,21 @@
           ← Regresar
         </button>
       </section>
-      
+
       <!-- WHEEL GAME SCREEN -->
       <section id="screen-wheel" class="screen hidden">
         <div class="game-header">
-             <div class="status">
-                <div id="wheel-lives" class="lives">Giros: 3</div>
-                <div class="score" id="wheel-score">Puntos: 0</div>
-            </div>
+          <div class="status">
+            <div id="wheel-lives" class="lives">Giros: 3</div>
+            <div class="score" id="wheel-score">Puntos: 0</div>
+          </div>
         </div>
         <div class="wheel-container">
-            <canvas id="wheel-canvas" width="500" height="500"></canvas>
-            <div class="wheel-arrow">▼</div>
-            <button id="btn-spin" class="btn btn-primary btn-spin">¡GIRAR!</button>
+          <canvas id="wheel-canvas" width="500" height="500"></canvas>
+          <div class="wheel-arrow">▼</div>
+          <button id="btn-spin" class="btn btn-primary btn-spin">
+            ¡GIRAR!
+          </button>
         </div>
         <button id="btn-wheel-quit" class="btn btn-secondary btn-quit">
           ← Regresar
@@ -162,13 +169,15 @@
       <!-- PUZZLE GAME SCREEN -->
       <section id="screen-puzzle" class="screen hidden">
         <div class="game-header">
-             <div class="status">
-                <div class="score" id="puzzle-score">Movimientos: 0</div>
-                <div id="puzzle-timer" class="timer">60s</div>
-            </div>
+          <div class="status">
+            <div class="score" id="puzzle-score">Movimientos: 0</div>
+            <div id="puzzle-timer" class="timer">60s</div>
+          </div>
         </div>
         <div class="puzzle-container" id="puzzle-board"></div>
-        <p style="opacity:0.7; font-size:14px;">Arrastra las piezas para armar la imagen</p>
+        <p style="opacity: 0.7; font-size: 14px">
+          Arrastra las piezas para armar la imagen
+        </p>
         <button id="btn-puzzle-quit" class="btn btn-secondary btn-quit">
           ← Regresar
         </button>
@@ -195,6 +204,80 @@
         <h2 id="final-title"></h2>
         <div id="final-stats" class="final-stats"></div>
         <p id="final-code" class="final-code"></p>
+        <div id="winner-card" class="winner-card hidden">
+          <div class="winner-header">
+            <h3>🎉 ¡Premio Ganado!</h3>
+            <p id="winner-prize" class="winner-prize"></p>
+          </div>
+          <div id="winner-code" class="winner-code"></div>
+          <p class="prize-validity">
+            Validez del premio: Entre 15 y 30 días calendario
+          </p>
+          <form id="winner-form" class="winner-form">
+            <div class="form-row">
+              <input
+                id="wf-cedula"
+                class="input"
+                type="text"
+                inputmode="numeric"
+                placeholder="Cédula"
+                required
+              />
+              <input
+                id="wf-telefono"
+                class="input"
+                type="tel"
+                placeholder="Teléfono"
+                required
+              />
+            </div>
+            <div class="form-row">
+              <input
+                id="wf-nombres"
+                class="input"
+                type="text"
+                placeholder="Nombres"
+                required
+              />
+              <input
+                id="wf-apellidos"
+                class="input"
+                type="text"
+                placeholder="Apellidos"
+                required
+              />
+            </div>
+            <input
+              id="wf-direccion"
+              class="input"
+              type="text"
+              placeholder="Dirección"
+            />
+            <input type="hidden" id="wf-premio" />
+            <div class="winner-actions">
+              <button type="submit" class="btn btn-primary">
+                Registrar Premio
+              </button>
+              <a class="btn btn-secondary" id="wf-open-page" target="_blank"
+                >Abrir página de registro</a
+              >
+              <button type="button" class="btn" id="wf-share-btn">
+                Compartir por WhatsApp
+              </button>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  font-size: 12px;
+                "
+              >
+                <input type="checkbox" id="wf-share-on-submit" /> Compartir al
+                registrar
+              </label>
+            </div>
+          </form>
+        </div>
         <button id="btn-restart" class="btn">Volver a jugar</button>
         <p class="site-note">Conoce más en www.dh2o.com.co</p>
       </section>
@@ -206,7 +289,9 @@
         <h3>¡Premio!</h3>
         <p id="modal-prize"></p>
         <p id="modal-code" class="code"></p>
-        <p class="prize-validity">Validez del premio: Entre 15 y 30 días calendario</p>
+        <p class="prize-validity">
+          Validez del premio: Entre 15 y 30 días calendario
+        </p>
         <div style="display: flex; gap: 12px; margin-top: 16px">
           <button
             id="btn-register-prize"
@@ -238,6 +323,6 @@
       </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=2"></script>
   </body>
 </html>

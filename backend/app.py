@@ -265,7 +265,7 @@ def current_user():
     try:
         token = request.cookies.get('auth_token')
         uid = verify_token(token) if token else None
-        return User.query.get(uid) if uid else None
+        return db.session.get(User, uid) if uid else None
     except Exception:
         return None
 
@@ -447,7 +447,7 @@ def verify():
     if not user_id:
         return jsonify({'authenticated': False}), 401
     
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     if not user:
         return jsonify({'authenticated': False}), 401
     
@@ -616,7 +616,7 @@ def crear_pregunta():
             activa=bool(data.get('activa', True))
         )
         if data.get('categoria_id') is not None:
-            cat = Categoria.query.get(data.get('categoria_id'))
+            cat = db.session.get(Categoria, data.get('categoria_id'))
             if not cat or not cat.activa:
                 return jsonify({'success': False, 'message': 'Categoría no válida'}), 400
             p.categoria_id = cat.id
@@ -652,7 +652,7 @@ def actualizar_pregunta(id):
                 return jsonify({'success': False, 'message': 'El texto de la pregunta es requerido'}), 400
             p.texto = t
         if 'categoria_id' in data and data.get('categoria_id') is not None:
-            cat = Categoria.query.get(data.get('categoria_id'))
+            cat = db.session.get(Categoria, data.get('categoria_id'))
             if not cat or not cat.activa:
                 return jsonify({'success': False, 'message': 'Categoría no válida'}), 400
             p.categoria_id = cat.id
