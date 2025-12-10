@@ -8,6 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 import jwt
 from functools import wraps
+from sqlalchemy import select, func
 
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 debug_env = os.getenv('DEBUG')
@@ -565,14 +566,14 @@ def listar_clientes():
     page = request.args.get('page', type=int)
     per_page = request.args.get('per_page', type=int) or 25
     try:
-        q = db.session.query(Cliente).order_by(Cliente.fecha_registro.desc())
+        base_stmt = select(Cliente).order_by(Cliente.fecha_registro.desc())
         if page and per_page:
-            total = db.session.query(db.func.count(Cliente.id)).scalar() or 0
+            total = db.session.execute(select(func.count(Cliente.id))).scalar_one()
             pages = (total + per_page - 1) // per_page if per_page > 0 else 1
             offset = (page - 1) * per_page if page > 0 else 0
-            items = q.limit(per_page).offset(offset).all()
+            items = db.session.execute(base_stmt.limit(per_page).offset(offset)).scalars().all()
         else:
-            items = q.all()
+            items = db.session.execute(base_stmt).scalars().all()
             total = len(items)
             pages = 1
             page = 1
@@ -610,18 +611,20 @@ def listar_preguntas():
             except ValueError:
                 pass
 
-        total = db.session.query(db.func.count(Pregunta.id)).filter(*filters).scalar() or 0
+        total_stmt = select(func.count(Pregunta.id)).where(*filters)
+        total = db.session.execute(total_stmt).scalar_one()
+
         pages = (total + per_page - 1) // per_page if per_page > 0 else 1
         offset = (page - 1) * per_page if page > 0 else 0
 
-        items = (
-            db.session.query(Pregunta)
-            .filter(*filters)
+        items_stmt = (
+            select(Pregunta)
+            .where(*filters)
             .order_by(Pregunta.fecha_creacion.desc())
             .limit(per_page)
             .offset(offset)
-            .all()
         )
+        items = db.session.execute(items_stmt).scalars().all()
 
         return jsonify({
             'success': True,
@@ -735,12 +738,8 @@ def listar_categorias():
             active = str(activa_param).lower() == 'true'
             filters.append(Categoria.activa == active)
 
-        cats = (
-            db.session.query(Categoria)
-            .filter(*filters)
-            .order_by(Categoria.nombre.asc())
-            .all()
-        )
+        cats_stmt = select(Categoria).where(*filters).order_by(Categoria.nombre.asc())
+        cats = db.session.execute(cats_stmt).scalars().all()
         return jsonify({'success': True, 'categorias': [c.to_dict() for c in cats], 'total': len(cats)})
     except Exception as e:
         try:
@@ -926,21 +925,21 @@ def listar_premios():
         page = request.args.get('page', type=int)
         per_page = request.args.get('per_page', type=int) or 25
 
-        base = db.session.query(Premio)
+        filters = []
         if solo_activos:
-            base = base.filter(Premio.activo == True)
-        base = base.order_by(Premio.nombre.asc())
+            filters.append(Premio.activo == True)
 
+        total_stmt = select(func.count(Premio.id)).where(*filters)
+        total = db.session.execute(total_stmt).scalar_one() if page and per_page else None
+
+        items_stmt = select(Premio).where(*filters).order_by(Premio.nombre.asc())
         if page and per_page:
-            total = db.session.query(db.func.count(Premio.id))
-            if solo_activos:
-                total = total.filter(Premio.activo == True)
-            total = total.scalar() or 0
             pages = (total + per_page - 1) // per_page if per_page > 0 else 1
             offset = (page - 1) * per_page if page > 0 else 0
-            items = base.limit(per_page).offset(offset).all()
+            items_stmt = items_stmt.limit(per_page).offset(offset)
+            items = db.session.execute(items_stmt).scalars().all()
         else:
-            items = base.all()
+            items = db.session.execute(items_stmt).scalars().all()
             total = len(items)
             pages = 1
             page = 1
