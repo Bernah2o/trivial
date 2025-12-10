@@ -17,6 +17,27 @@
   text-align: center;
   color: #8aa;
 }
+
+.pagination-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-top: 1px solid rgba(25, 134, 200, 0.2);
+  margin-top: 10px;
+}
+
+.pagination-container span {
+  color: var(--azul2);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
 .form-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -25,9 +46,11 @@
 }
 
 /* Inputs y selects mejorados dentro del modal */
+/* Inputs y selects mejorados */
 .qa-modal .input,
 .qa-modal select.input,
-.qa-modal textarea.input {
+.qa-modal textarea.input,
+.admin-header .input {
   background: rgba(25, 134, 200, 0.08);
   border: 1.5px solid rgba(25, 134, 200, 0.3);
   color: #fff;
@@ -40,14 +63,16 @@
 
 .qa-modal .input:focus,
 .qa-modal select.input:focus,
-.qa-modal textarea.input:focus {
+.qa-modal textarea.input:focus,
+.admin-header .input:focus {
   outline: none;
   border-color: var(--azul);
   background: rgba(25, 134, 200, 0.12);
   box-shadow: 0 0 0 3px rgba(25, 134, 200, 0.15);
 }
 
-.qa-modal .input::placeholder {
+.qa-modal .input::placeholder,
+.admin-header .input::placeholder {
   color: rgba(255, 255, 255, 0.4);
 }
 

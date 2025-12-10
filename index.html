@@ -76,6 +76,16 @@
               <strong>Memory Card</strong>
               <span>Encuentra los pares de conceptos</span>
             </button>
+            <button id="btn-mode-wheel" class="mode-card">
+              <div class="mode-icon">🎡</div>
+              <strong>Ruleta</strong>
+              <span>Gira y gana premios o preguntas</span>
+            </button>
+            <button id="btn-mode-puzzle" class="mode-card">
+              <div class="mode-icon">🧩</div>
+              <strong>Puzzle</strong>
+              <span>Arma el tanque en tiempo récord</span>
+            </button>
           </div>
         </div>
 
@@ -83,6 +93,12 @@
         <div id="trivia-selection" class="packs">
           <h2>Selecciona una trivia</h2>
           <div id="packs-list" class="packs-list" role="list"></div>
+        </div>
+        
+        <!-- WHEEL / PUZZLE SELECTION -->
+        <div id="wheel-selection" class="packs hidden">
+            <h2>Modo Ruleta y Puzzle</h2>
+            <p style="text-align:center; margin-bottom: 20px;">Presiona iniciar para comenzar el desafío.</p>
         </div>
 
         <!-- MEMORY MODE SELECTION -->
@@ -120,6 +136,39 @@
         <div id="question" class="question"></div>
         <div id="options" class="options" role="list"></div>
         <button id="btn-trivia-quit" class="btn btn-secondary btn-quit">
+          ← Regresar
+        </button>
+      </section>
+      
+      <!-- WHEEL GAME SCREEN -->
+      <section id="screen-wheel" class="screen hidden">
+        <div class="game-header">
+             <div class="status">
+                <div id="wheel-lives" class="lives">Giros: 3</div>
+                <div class="score" id="wheel-score">Puntos: 0</div>
+            </div>
+        </div>
+        <div class="wheel-container">
+            <canvas id="wheel-canvas" width="500" height="500"></canvas>
+            <div class="wheel-arrow">▼</div>
+            <button id="btn-spin" class="btn btn-primary btn-spin">¡GIRAR!</button>
+        </div>
+        <button id="btn-wheel-quit" class="btn btn-secondary btn-quit">
+          ← Regresar
+        </button>
+      </section>
+
+      <!-- PUZZLE GAME SCREEN -->
+      <section id="screen-puzzle" class="screen hidden">
+        <div class="game-header">
+             <div class="status">
+                <div class="score" id="puzzle-score">Movimientos: 0</div>
+                <div id="puzzle-timer" class="timer">60s</div>
+            </div>
+        </div>
+        <div class="puzzle-container" id="puzzle-board"></div>
+        <p style="opacity:0.7; font-size:14px;">Arrastra las piezas para armar la imagen</p>
+        <button id="btn-puzzle-quit" class="btn btn-secondary btn-quit">
           ← Regresar
         </button>
       </section>

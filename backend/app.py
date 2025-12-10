@@ -510,12 +510,33 @@ def listar_clientes():
 @app.route('/api/preguntas', methods=['GET'])
 def listar_preguntas():
     activa_param = request.args.get('activa')
+    categoria_id_param = request.args.get('categoria_id')
+    
+    # Paginacin
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    
     q = Pregunta.query
     if activa_param is not None:
         active = str(activa_param).lower() == 'true'
         q = q.filter_by(activa=active)
-    preguntas = q.order_by(Pregunta.fecha_creacion.desc()).all()
-    return jsonify({'success': True, 'preguntas': [p.to_dict() for p in preguntas], 'total': len(preguntas)})
+    
+    if categoria_id_param:
+        try:
+            cat_id = int(categoria_id_param)
+            q = q.filter_by(categoria_id=cat_id)
+        except ValueError:
+            pass # Ignorar si no es nmero
+
+    pagination = q.order_by(Pregunta.fecha_creacion.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    
+    return jsonify({
+        'success': True, 
+        'preguntas': [p.to_dict() for p in pagination.items], 
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'current_page': page
+    })
 
 @app.route('/api/pregunta', methods=['POST'])
 def crear_pregunta():

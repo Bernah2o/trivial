@@ -664,3 +664,108 @@ body {
     font-size: 40px;
   }
 }
+
+/* Wheel Mode */
+.wheel-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  position: relative;
+  margin-top: 20px;
+}
+
+#wheel-canvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  transition: transform 3s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.wheel-arrow {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 40px;
+  color: var(--rojo, #dc3545);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.btn-spin {
+  font-size: 24px;
+  padding: 16px 40px;
+  background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+  color: #000;
+  border: none;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4);
+}
+
+.btn-spin:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(255, 152, 0, 0.6);
+  background: linear-gradient(135deg, #ffca28 0%, #ffda6c 100%);
+}
+
+/* Puzzle Mode */
+.puzzle-container {
+    display: grid;
+    grid-template-columns: repeat(3, 100px);
+    grid-template-rows: repeat(3, 100px);
+    gap: 2px;
+    background: #000;
+    border: 4px solid var(--azul);
+    padding: 2px;
+    margin: 20px auto;
+    width: 312px;
+    height: 312px;
+    box-shadow: 0 0 20px rgba(25, 134, 200, 0.4);
+}
+
+.puzzle-piece {
+    width: 100px;
+    height: 100px;
+    background-image: url('../img/puzzle_tank.png');
+    background-size: 300px 300px;
+    cursor: grab;
+    transition: transform 0.2s, box-shadow 0.2s;
+    user-select: none;
+}
+
+.puzzle-piece:active {
+    cursor: grabbing;
+    transform: scale(1.05);
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.puzzle-piece.empty {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    cursor: default;
+}
+
+.puzzle-piece.correct {
+    filter: brightness(1.2);
+    border: 1px solid var(--verde);
+}
+
+@media (max-width: 400px) {
+    .puzzle-container {
+        grid-template-columns: repeat(3, 80px);
+        grid-template-rows: repeat(3, 80px);
+        width: 252px;
+        height: 252px;
+    }
+    .puzzle-piece {
+        width: 80px;
+        height: 80px;
+        background-size: 240px 240px;
+    }
+}

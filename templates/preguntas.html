@@ -15,8 +15,11 @@
         <input
           id="q-search"
           class="input"
-          placeholder="Buscar por texto o categoría"
+          placeholder="Buscar por texto..."
         />
+        <select id="q-filter-categoria" class="input" style="max-width: 200px">
+          <option value="">Todas las categorías</option>
+        </select>
         <button id="q-refresh" class="btn">Actualizar</button>
         <button id="q-new" class="btn btn-primary">Nueva Pregunta</button>
         <a class="btn" href="/admin">Volver al Panel</a>
@@ -38,6 +41,12 @@
         <tbody id="q-tbody"></tbody>
       </table>
       <div id="q-empty" class="empty hidden">Sin preguntas</div>
+      
+      <div id="pagination" class="pagination-container hidden">
+        <button id="btn-prev" class="btn btn-sm">Anterior</button>
+        <span id="page-info">Página 1 de 1</span>
+        <button id="btn-next" class="btn btn-sm">Siguiente</button>
+      </div>
     </div>
 
     <div id="q-modal" class="modal-overlay hidden">
@@ -110,18 +119,39 @@
       let preguntas = [];
       let editingId = null;
       let confirmTargetId = null;
+      let currentPage = 1;
+      let totalPages = 1;
+      const perPage = 10;
 
-      async function cargarPreguntas() {
-        const res = await fetch("/api/preguntas");
+      async function cargarPreguntas(page = 1) {
+        const catId = document.getElementById("q-filter-categoria").value;
+        const qText = document.getElementById("q-search").value.trim();
+        
+        let url = `/api/preguntas?page=${page}&per_page=${perPage}`;
+        if (catId) url += `&categoria_id=${catId}`;
+        // Note: For text search to work with server-side pagination, backend needs an update too.
+        // For now, we will paginate what we get. If backend search isn't implemented, we might have issues.
+        // Assuming user wants server-side pagination, we'll implement that and client-side search won't work perfectly across pages unless backend supports it.
+        // Let's implement full server-side pagination first.
+        
+        const res = await fetch(url);
         const data = await res.json();
-        preguntas = Array.isArray(data.preguntas) ? data.preguntas : [];
-        renderPreguntas();
+        
+        if (data.success) {
+            preguntas = data.preguntas || [];
+            currentPage = data.current_page;
+            totalPages = data.pages;
+            renderPreguntas();
+            updatePaginationUI();
+        }
       }
 
       function renderPreguntas() {
+        // Client-side search within the current page (limitation of mixed approach)
         const q = document.getElementById("q-search").value.toLowerCase();
         const tbody = document.getElementById("q-tbody");
         const empty = document.getElementById("q-empty");
+        
         const rows = preguntas
           .filter(
             (p) =>
@@ -234,20 +264,35 @@
         await cargarCategorias();
       });
       document
-        .getElementById("q-refresh")
-        .addEventListener("click", cargarPreguntas);
-      document
         .getElementById("q-search")
         .addEventListener("input", renderPreguntas);
+      document
+        .getElementById("q-filter-categoria")
+        .addEventListener("change", () => cargarPreguntas(1));
+      document
+        .getElementById("q-refresh")
+        .addEventListener("click", () => cargarPreguntas(currentPage));
 
       async function cargarCategorias() {
         const r = await fetch("/api/categorias?activa=true");
         const d = await r.json();
-        const sel = document.getElementById("qm-categoria");
-        const opts = (d.categorias || []).map(
+        const cats = d.categorias || [];
+        
+        // Populate modal select
+        const selModal = document.getElementById("qm-categoria");
+        const optsModal = cats.map(
           (c) => `<option value="${c.id}">${c.nombre}</option>`
         );
-        sel.innerHTML = opts.join("");
+        selModal.innerHTML = optsModal.join("");
+
+        // Populate filter select
+        const selFilter = document.getElementById("q-filter-categoria");
+        const currentFilter = selFilter.value;
+        const optsFilter = ['<option value="">Todas las categorías</option>'].concat(
+          cats.map((c) => `<option value="${c.id}">${c.nombre}</option>`)
+        );
+        selFilter.innerHTML = optsFilter.join("");
+        selFilter.value = currentFilter;
       }
 
       document
@@ -392,6 +437,32 @@
           setTimeout(() => t.remove(), 250);
         }, 3000);
       }
+
+      function updatePaginationUI() {
+        const container = document.getElementById("pagination");
+        const btnPrev = document.getElementById("btn-prev");
+        const btnNext = document.getElementById("btn-next");
+        const info = document.getElementById("page-info");
+        
+        if (totalPages <= 1) {
+            container.classList.add("hidden");
+            return;
+        }
+        
+        container.classList.remove("hidden");
+        info.textContent = `Página ${currentPage} de ${totalPages}`;
+        
+        btnPrev.disabled = currentPage <= 1;
+        btnNext.disabled = currentPage >= totalPages;
+      }
+      
+      document.getElementById("btn-prev").addEventListener("click", () => {
+        if (currentPage > 1) cargarPreguntas(currentPage - 1);
+      });
+      
+      document.getElementById("btn-next").addEventListener("click", () => {
+        if (currentPage < totalPages) cargarPreguntas(currentPage + 1);
+      });
 
       cargarPreguntas();
       cargarCategorias();

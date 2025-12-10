@@ -84,6 +84,11 @@ body {
   background: var(--rojo);
   border-color: var(--rojo);
 }
+.btn-warning {
+  background: #ffc107;
+  border-color: #ffc107;
+  color: #000;
+}
 .search-box {
   flex: 1;
   max-width: 400px;

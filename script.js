@@ -582,11 +582,27 @@ const state = {
   memoryCards: [],
   flippedCards: [],
   matchedPairs: 0,
-  moves: 0,
-  memoryLives: 3, // Solo 3 intentos
   memoryScore: 0,
   memoryTimeElapsed: 0,
   memoryTimerInterval: null,
+
+  // Wheel state
+  wheelSegments: [],
+  wheelCtx: null,
+  wheelRotation: 0,
+  isSpinning: false,
+  wheelCtx: null,
+  wheelRotation: 0,
+  isSpinning: false,
+  wheelLives: 3,
+
+  // Puzzle state
+  puzzleGrid: [], // Current state of grid indices
+  puzzleSolvedGrid: [0, 1, 2, 3, 4, 5, 6, 7, 8], // Goals
+  puzzleMoves: 0,
+  puzzleTimerInterval: null,
+  puzzleTimeLeft: 60,
+  draggedPiece: null,
 };
 
 // ==================== ELEMENTS ====================
@@ -602,6 +618,23 @@ const el = {
   btnModeMemory: document.getElementById("btn-mode-memory"),
   triviaSelection: document.getElementById("trivia-selection"),
   memorySelection: document.getElementById("memory-selection"),
+  wheelSelection: document.getElementById("wheel-selection"),
+  
+  // Wheel elements
+  btnModeWheel: document.getElementById("btn-mode-wheel"),
+  wheelScreen: document.getElementById("screen-wheel"),
+  wheelCanvas: document.getElementById("wheel-canvas"),
+  wheelLives: document.getElementById("wheel-lives"),
+  btnSpin: document.getElementById("btn-spin"),
+  btnWheelQuit: document.getElementById("btn-wheel-quit"),
+
+  // Puzzle elements
+  btnModePuzzle: document.getElementById("btn-mode-puzzle"),
+  puzzleScreen: document.getElementById("screen-puzzle"),
+  puzzleBoard: document.getElementById("puzzle-board"), 
+  puzzleScore: document.getElementById("puzzle-score"),
+  puzzleTimer: document.getElementById("puzzle-timer"),
+  btnPuzzleQuit: document.getElementById("btn-puzzle-quit"),
 
   // Trivia elements
   packsList: document.getElementById("packs-list"),
@@ -742,6 +775,17 @@ function setupEventListeners() {
   // Mode selection
   el.btnModeTrivia.addEventListener("click", () => selectMode("trivia"));
   el.btnModeMemory.addEventListener("click", () => selectMode("memory"));
+  el.btnModeWheel.addEventListener("click", () => selectMode("wheel"));
+
+  // Wheel
+  el.btnSpin.addEventListener("click", spinWheel);
+  el.btnWheelQuit.addEventListener("click", () => setScreen("home"));
+  // Puzzle
+  el.btnModePuzzle.addEventListener("click", () => selectMode("puzzle"));
+  el.btnPuzzleQuit.addEventListener("click", () => {
+    clearInterval(state.puzzleTimerInterval);
+    setScreen("home");
+  });
 
   // Trivia
   el.btnStart.addEventListener("click", startGame);
@@ -817,23 +861,42 @@ function selectMode(mode) {
   // Update UI
   el.btnModeTrivia.classList.toggle("selected", mode === "trivia");
   el.btnModeMemory.classList.toggle("selected", mode === "memory");
+  el.btnModeWheel.classList.toggle("selected", mode === "wheel");
+  el.btnModePuzzle.classList.toggle("selected", mode === "puzzle");
 
   el.triviaSelection.classList.toggle("hidden", mode !== "trivia");
   el.memorySelection.classList.toggle("hidden", mode !== "memory");
+  el.wheelSelection.classList.toggle("hidden", mode !== "wheel" && mode !== "puzzle");
 
   // Reset selection
-  el.btnStart.disabled = true;
+  if (mode === "wheel") {
+      el.btnStart.disabled = false;
+      el.btnStart.textContent = "Ir a la Ruleta";
+      el.btnStart.classList.remove("hidden");
+      el.btnStart.onclick = startWheelMode;
+  } else if (mode === "puzzle") {
+      el.btnStart.disabled = false;
+      el.btnStart.textContent = "Iniciar Puzzle";
+      el.btnStart.classList.remove("hidden");
+      el.btnStart.onclick = startPuzzleMode;
+  } else {
+      el.btnStart.disabled = true;
+      el.btnStart.textContent = "Iniciar Juego";
+      el.btnStart.onclick = startGame;
+      el.btnStart.classList.remove("hidden");
+  }
 
   if (mode === "trivia") {
     document
       .querySelectorAll(".pack-card")
       .forEach((x) => x.classList.remove("selected"));
     state.pack = null;
-  } else {
+  } else if (mode === "memory") {
     document
       .querySelectorAll("#memory-levels .pack-card")
       .forEach((x) => x.classList.remove("selected"));
     state.memoryLevel = null;
+    el.btnStart.classList.add("hidden"); // Memory shows levels directly
   }
 }
 
@@ -862,6 +925,9 @@ function setScreen(name) {
   el.game.classList.toggle("hidden", name !== "game");
   el.memory.classList.toggle("hidden", name !== "memory");
   el.final.classList.toggle("hidden", name !== "final");
+  el.final.classList.toggle("hidden", name !== "final");
+  el.wheelScreen.classList.toggle("hidden", name !== "wheel");
+  el.puzzleScreen.classList.toggle("hidden", name !== "puzzle");
 }
 
 function startGame() {
@@ -1399,4 +1465,463 @@ function toggleFullscreen() {
 }
 
 // ==================== START ====================
+// ==================== WHEEL LOGIC ====================
+
+function startWheelMode() {
+    setScreen("wheel");
+    initWheel();
+}
+
+function initWheel() {
+    // Definir segmentos basados en categorías o premios
+    state.wheelSegments = [];
+    
+    // 1. Agregar categorías de preguntas disponibles
+    if (packs && packs.length > 0) {
+        packs.forEach(p => {
+            const label = p.nombre || "Pregunta";
+            state.wheelSegments.push({ 
+                type: 'question', 
+                text: label.substring(0, 15), // Limitar longitud
+                data: p, 
+                color: getRandomColor() 
+            });
+        });
+    }
+
+    // 2. Agregar segmentos de "Variedad" para hacer la ruleta más interesante
+    const extraSegments = [
+        { type: 'prize', text: '🎁 PREMIO', color: '#FFD700' },
+        { type: 'retry', text: 'Gira Otra Vez', color: '#4CAF50' },
+        { type: 'prize', text: '🏆 SORPRESA', color: '#FF9800' }, 
+        { type: 'retry', text: 'Intenta Nuevo', color: '#2196F3' }
+    ];
+
+    // Mezclar y agregar extras
+    extraSegments.forEach(seg => {
+        state.wheelSegments.push({ ...seg, data: null });
+    });
+    
+    // 3. Si aún hay pocos segmentos (menos de 8), duplicar existentes
+    // Priorizar duplicar PREMIO y Categorías
+    while (state.wheelSegments.length < 8) {
+         const original = state.wheelSegments[state.wheelSegments.length % 2]; // Alternar entre los primeros
+         state.wheelSegments.push({ ...original, color: getRandomColor() });
+    }
+
+    // Shuffle segments for better distribution
+    for (let i = state.wheelSegments.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [state.wheelSegments[i], state.wheelSegments[j]] = [state.wheelSegments[j], state.wheelSegments[i]];
+    }
+
+    state.wheelLives = 3;
+    updateWheelStatus();
+
+    state.wheelCtx = el.wheelCanvas.getContext("2d");
+    drawWheel();
+}
+
+function updateWheelStatus() {
+    el.wheelLives.textContent = `Giros: ${state.wheelLives}`;
+    // el.wheelScore.textContent = ... if we had score
+}
+
+function getRandomColor() {
+    const colors = ['#1986c8', '#1eb8d1', '#008037', '#0d1419', '#4caf50', '#2196f3', '#9c27b0', '#ff5722'];
+    return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function drawWheel() {
+    if (!state.wheelCtx) return;
+    const ctx = state.wheelCtx;
+    const width = el.wheelCanvas.width;
+    const height = el.wheelCanvas.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(centerX, centerY) - 10;
+    const segments = state.wheelSegments.length;
+    const arcSize = (2 * Math.PI) / segments;
+
+    ctx.clearRect(0, 0, width, height);
+    
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(state.wheelRotation);
+
+    for (let i = 0; i < segments; i++) {
+        const angle = i * arcSize;
+        const segment = state.wheelSegments[i];
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, radius, angle, angle + arcSize);
+        ctx.fillStyle = segment.color;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.save();
+        ctx.rotate(angle + arcSize / 2);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 18px Arial";
+        ctx.fillText(segment.text, radius - 20, 5);
+        ctx.restore();
+    }
+    
+    ctx.restore();
+    
+    // Draw Center Circle
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.stroke();
+}
+
+function spinWheel() {
+    if (state.isSpinning) return;
+    if (state.wheelLives <= 0) {
+        showToast("¡Te has quedado sin giros!", "error");
+        return;
+    }
+
+    state.wheelLives--;
+    updateWheelStatus();
+
+    state.isSpinning = true;
+    el.btnSpin.disabled = true;
+
+    // Duración aleatoria entre 3 y 5 segundos
+    const duration = 4000 + Math.random() * 2000; 
+    const startRotation = state.wheelRotation;
+    // Rotar al menos 5 vueltas completas + un extra aleatorio
+    const totalRotation = startRotation + (10 * Math.PI) + (Math.random() * 10 * Math.PI);
+    const startTime = performance.now();
+
+    function animate(time) {
+        const elapsed = time - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        
+        // Easing function: cubic-bezier out
+        const easeOut = 1 - Math.pow(1 - t, 3);
+        
+        state.wheelRotation = startRotation + (totalRotation - startRotation) * easeOut;
+        drawWheel();
+
+        if (t < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            state.isSpinning = false;
+            el.btnSpin.disabled = false;
+            determineWheelResult();
+        }
+    }
+
+    requestAnimationFrame(animate);
+}
+
+function determineWheelResult() {
+    const segments = state.wheelSegments.length;
+    const arcSize = (2 * Math.PI) / segments;
+    // Normalizar rotación entre 0 y 2PI
+    const currentRotation = state.wheelRotation % (2 * Math.PI);
+    
+    // La flecha está arriba (270 grados o -90 grados, que es 1.5 PI)
+    // Calcular qué segmento está tocando la flecha
+    // Ajuste matemático: 
+    // Angulo de flecha efectivo considerando la rotación: (2*Math.PI - currentRotation + 1.5*Math.PI) % 2*Math.PI
+    // Simplificado: Index se basa en (TotalAngle - HandAngle)
+    
+    // Método simple: calcular angulo recorrido
+    let pointerAngle = (3 * Math.PI / 2) - currentRotation;
+    while (pointerAngle < 0) pointerAngle += 2 * Math.PI;
+    
+    const index = Math.floor(pointerAngle / arcSize) % segments;
+    const result = state.wheelSegments[index];
+    
+    if (result.type === 'question') {
+        launchWheelQuestion(result.data);
+    } else if (result.type === 'prize') {
+        giveRandomPrize();
+    } else if (result.type === 'retry') {
+        showToast("¡Ups! Cuenta como giro.", "info");
+        checkWheelGameEnd();
+    }
+}
+
+function checkWheelGameEnd() {
+    if (state.wheelLives > 0) {
+        el.btnSpin.disabled = false;
+    } else {
+        setTimeout(() => {
+            showToast("Juego Terminado", "info");
+             // Maybe show summary or return home
+             setTimeout(() => setScreen("home"), 2000);
+        }, 1500);
+    }
+}
+
+function launchWheelQuestion(pack) {
+    // Configurar estado para una sola pregunta
+    state.pack = pack;
+    // Seleccionar pregunta aleatoria
+    const randomIndex = Math.floor(Math.random() * pack.preguntas.length);
+    state.indicePregunta = randomIndex; 
+    
+    // Mostrar modal con la pregunta (reusando UI de Trivia o un modal custom)
+    // Para simpleza, usaremos una alerta visual o cambiaremos temporalmente a la pantalla de juego con 1 sola vida/pregunta
+    // Mejor: mostramos un Modal
+    
+    state.currentQuestion = pack.preguntas[randomIndex];
+    
+    // Usar el modal genérico para mostrar la pregunta
+    el.modal.classList.remove("hidden");
+    const modalContent = el.modal.querySelector(".modal-content");
+    
+    // Render Question in Modal
+    modalContent.innerHTML = `
+        <h3>${pack.nombre}</h3>
+        <p class="question" style="font-size:20px; color:white;">${state.currentQuestion.q}</p>
+        <div id="wheel-options" class="options" style="margin-top:20px;"></div>
+    `;
+    
+    const optsContainer = document.getElementById("wheel-options");
+    state.currentQuestion.o.forEach((optText, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "option";
+        btn.textContent = optText;
+        btn.onclick = () => checkWheelAnswer(idx, btn);
+        optsContainer.appendChild(btn);
+    });
+}
+
+function checkWheelAnswer(selectedIndex, btnElement) {
+    const correctIndex = state.currentQuestion.a;
+    if (selectedIndex === correctIndex) {
+        btnElement.classList.add("correct");
+        setTimeout(() => {
+            el.modal.classList.add("hidden");
+            // Dar premio o puntos
+            giveRandomPrize(); // Ganó la pregunta -> Premio
+            showToast("¡Respuesta Correcta!", "success");
+            checkWheelGameEnd();
+        }, 1000);
+    } else {
+        btnElement.classList.add("incorrect");
+        setTimeout(() => {
+             el.modal.classList.add("hidden");
+             showToast("Respuesta Incorrecta", "error");
+             checkWheelGameEnd();
+        }, 1000);
+    }
+}
+
+function giveRandomPrize() {
+    // Lógica existente de premios
+    const rand = Math.random();
+    let acumulado = 0;
+    let seleccionado = null;
+
+    if (premiosDisponibles.length === 0) {
+        // Mostrar premio genérico si no hay stock
+        state.premioActual = { nombre: "Descuento Especial" };
+        state.codigoPremio = genCode();
+        state.tuvoPremio = true;
+        el.modalPrize.textContent = "Descuento Especial";
+        el.modalCode.textContent = state.codigoPremio;
+        el.modal.classList.remove("hidden");
+        return;
+    }
+
+    for (const p of premiosDisponibles) {
+        acumulado += p.probabilidad;
+        if (rand < acumulado) {
+            seleccionado = p;
+            break;
+        }
+    }
+    
+    if (!seleccionado) seleccionado = premiosDisponibles[premiosDisponibles.length - 1];
+    
+    state.premioActual = seleccionado;
+    state.codigoPremio = genCode();
+    state.tuvoPremio = true;
+    el.modalPrize.textContent = seleccionado.nombre;
+    el.modalCode.textContent = state.codigoPremio;
+    el.modal.classList.remove("hidden");
+    
+    // Si viene de la ruleta, verificar fin de juego al cerrar modal?
+    // Por simplicidad, el modal bloquea, al cerrarlo el usuario ve el boton deshabilitado si vidas=0
+    if (state.mode === 'wheel') checkWheelGameEnd();
+}
+
+function showToast(message, type) {
+    // Basic toast reuse or implementation
+    console.log(type, message);
+}
+
+// ==================== START ====================
+// ==================== PUZZLE LOGIC ====================
+
+function startPuzzleMode() {
+    setScreen("puzzle");
+    initPuzzle();
+}
+
+function initPuzzle() {
+    state.puzzleTimeLeft = 60;
+    state.puzzleMoves = 0;
+    state.puzzleGrid = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+    // Shuffle simple ensuring solvability (or just random swaps)
+    // For 3x3 simple swap puzzle, just shuffle array.
+    for (let i = state.puzzleGrid.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [state.puzzleGrid[i], state.puzzleGrid[j]] = [state.puzzleGrid[j], state.puzzleGrid[i]];
+    }
+
+    renderPuzzleBoard();
+    updatePuzzleStatus();
+
+    clearInterval(state.puzzleTimerInterval);
+    state.puzzleTimerInterval = setInterval(() => {
+        state.puzzleTimeLeft--;
+        el.puzzleTimer.textContent = `${state.puzzleTimeLeft}s`;
+        if (state.puzzleTimeLeft <= 0) {
+            finishPuzzle(false);
+        }
+    }, 1000);
+}
+
+function updatePuzzleStatus() {
+    el.puzzleScore.textContent = `Movimientos: ${state.puzzleMoves}`;
+}
+
+function renderPuzzleBoard() {
+    el.puzzleBoard.innerHTML = "";
+    state.puzzleGrid.forEach((val, index) => {
+        const piece = document.createElement("div");
+        piece.className = "puzzle-piece";
+        piece.draggable = true;
+        piece.dataset.index = index;
+        piece.dataset.val = val; 
+        
+        // Calculate background position
+        // val is 0-8. Grid is 3x3.
+        // Row = val / 3 (integer), Col = val % 3
+        const row = Math.floor(val / 3);
+        const col = val % 3;
+        // Background positions: 0% 0%, 50% 0%, 100% 0% ...
+        // Size is 300x300. Each piece is 100x100.
+        // So bg position is -100*col px -100*row px
+        piece.style.backgroundPosition = `-${col * 100}px -${row * 100}px`;
+
+        if (isPuzzleSolved()) {
+             piece.draggable = false;
+             piece.classList.add("correct");
+        }
+
+        piece.addEventListener("dragstart", handleDragStart);
+        piece.addEventListener("dragover", handleDragOver);
+        piece.addEventListener("drop", handleDrop);
+        
+        // Touch events for mobile
+        piece.addEventListener("touchstart", handleTouchStart, {passive: false});
+        piece.addEventListener("touchmove", handleTouchMove, {passive: false});
+        piece.addEventListener("touchend", handleTouchEnd);
+
+        el.puzzleBoard.appendChild(piece);
+    });
+}
+
+function handleDragStart(e) {
+    state.draggedPiece = e.target;
+    e.dataTransfer.setData("text/plain", e.target.dataset.index);
+    e.target.classList.add("dragging");
+}
+
+function handleDragOver(e) {
+    e.preventDefault(); // Necessary to allow dropping
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    const target = e.target;
+    if (!target.classList.contains("puzzle-piece")) return;
+    
+    const fromIndex = parseInt(state.draggedPiece.dataset.index);
+    const toIndex = parseInt(target.dataset.index);
+    
+    if (fromIndex !== toIndex) {
+        swapPieces(fromIndex, toIndex);
+    }
+    
+    state.draggedPiece.classList.remove("dragging");
+    state.draggedPiece = null;
+}
+
+// Touch support implementation simplified: select first, tap second to swap
+let selectedTouchPiece = null;
+function handleTouchStart(e) {
+    // e.preventDefault();
+    // Simple tap-to-swap logic for touch
+    const target = e.target;
+    if (!target.classList.contains("puzzle-piece")) return;
+    
+    if (!selectedTouchPiece) {
+        selectedTouchPiece = target;
+        target.classList.add("dragging"); // Reusing style for selection
+    } else {
+        const fromIndex = parseInt(selectedTouchPiece.dataset.index);
+        const toIndex = parseInt(target.dataset.index);
+        
+        if (fromIndex !== toIndex) {
+            swapPieces(fromIndex, toIndex);
+        }
+        
+        selectedTouchPiece.classList.remove("dragging");
+        selectedTouchPiece = null;
+    }
+}
+function handleTouchMove(e) { e.preventDefault(); }
+function handleTouchEnd(e) {}
+
+function swapPieces(fromIdx, toIdx) {
+    // Audio feedback could be here
+    [state.puzzleGrid[fromIdx], state.puzzleGrid[toIdx]] = [state.puzzleGrid[toIdx], state.puzzleGrid[fromIdx]];
+    state.puzzleMoves++;
+    renderPuzzleBoard();
+    updatePuzzleStatus();
+    
+    checkPuzzleWin();
+}
+
+function isPuzzleSolved() {
+    for (let i = 0; i < state.puzzleGrid.length; i++) {
+        if (state.puzzleGrid[i] !== i) return false;
+    }
+    return true;
+}
+
+function checkPuzzleWin() {
+    if (isPuzzleSolved()) {
+        clearInterval(state.puzzleTimerInterval);
+        setTimeout(() => finishPuzzle(true), 500);
+    }
+}
+
+function finishPuzzle(won) {
+    clearInterval(state.puzzleTimerInterval);
+    if (won) {
+        // Show Win Modal or just alert
+        showToast(`¡Puzzle Completado! en ${60 - state.puzzleTimeLeft}s`, "success");
+        setTimeout(() => {
+            giveRandomPrize(); // Reuse prize logic
+        }, 1000);
+    } else {
+        showToast("Tiempo agotado. ¡Inténtalo de nuevo!", "error");
+        setTimeout(() => setScreen("home"), 2000);
+    }
+}
+
 init();

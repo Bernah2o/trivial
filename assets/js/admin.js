@@ -285,6 +285,25 @@ function exportarCSV() {
   showToast("CSV exportado", "success");
 }
 
+async function resetLeaderboard() {
+  const ok = await confirmModal("¿Estás seguro de que deseas reiniciar los mejores puntajes? Esta acción borrará la tabla de posiciones local y no se puede deshacer.", {
+    okText: "Sí, reiniciar",
+    cancelText: "Cancelar",
+    title: "Resetear Puntajes"
+  });
+  
+  if (!ok) return;
+
+  try {
+    localStorage.removeItem("dh2o-leaderboard-trivia");
+    localStorage.removeItem("dh2o-leaderboard-memory");
+    showToast("Los puntajes han sido reiniciados", "success");
+  } catch (error) {
+    console.error("Error al resetear puntajes:", error);
+    showToast("Error al reiniciar puntajes", "error");
+  }
+}
+
 async function cerrarSesion() {
   const ok = await confirmModal("¿Estás seguro de cerrar sesión?", {
     okText: "Cerrar sesión",
