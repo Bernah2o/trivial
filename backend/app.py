@@ -39,7 +39,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
     'pool_recycle': 1800,
     'pool_size': 10,
-    'max_overflow': 20
+    'max_overflow': 20,
+    'pool_timeout': 30
 }
 
 # Configuración JWT
@@ -572,39 +573,42 @@ def listar_clientes():
 def listar_preguntas():
     activa_param = request.args.get('activa')
     categoria_id_param = request.args.get('categoria_id')
-    
-    # Paginacin
+
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
-    
+
     try:
         q = Pregunta.query
         if activa_param is not None:
             active = str(activa_param).lower() == 'true'
             q = q.filter_by(activa=active)
-        
+
         if categoria_id_param:
             try:
                 cat_id = int(categoria_id_param)
                 q = q.filter_by(categoria_id=cat_id)
             except ValueError:
-                pass # Ignorar si no es nmero
+                pass
 
-        pagination = q.order_by(Pregunta.fecha_creacion.desc()).paginate(page=page, per_page=per_page, error_out=False)
-        
+        total = q.count()
+        pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+        offset = (page - 1) * per_page if page > 0 else 0
+        items = q.order_by(Pregunta.fecha_creacion.desc()).limit(per_page).offset(offset).all()
+
         return jsonify({
-            'success': True, 
-            'preguntas': [p.to_dict() for p in pagination.items], 
-            'total': pagination.total,
-            'pages': pagination.pages,
+            'success': True,
+            'preguntas': [p.to_dict() for p in items],
+            'total': total,
+            'pages': pages,
             'current_page': page
         })
     except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         print(f"ERROR en listar_preguntas: {e}")
-        return jsonify({
-            'success': False, 
-            'message': f'Error al obtener preguntas: {str(e)}'
-        }), 500
+        return jsonify({'success': False, 'message': 'Error al obtener preguntas'}), 500
 
 @app.route('/api/pregunta', methods=['POST'])
 def crear_pregunta():
