@@ -131,15 +131,10 @@
               placeholder="Mensaje institucional + datos del premio"
             ></textarea>
           </div>
-          <div
-            class="form-group"
-            style="display: flex; align-items: center; gap: 10px"
-          >
-            <input type="checkbox" id="share_on_submit" />
-            <label for="share_on_submit" style="margin: 0"
-              >Compartir por WhatsApp al registrar</label
-            >
-          </div>
+          <div class="form-group" style="display: none"></div>
+          <button type="button" class="btn" id="share-btn">
+            Enviar por WhatsApp
+          </button>
         </div>
 
         <a href="/" class="back-link">← Volver al juego</a>
@@ -204,26 +199,6 @@
                 "success"
               );
 
-              const autoShare =
-                document.getElementById("share_on_submit").checked;
-              if (autoShare) {
-                try {
-                  const tel = document.getElementById("telefono").value;
-                  if (
-                    (String(tel || "").replace(/\D/g, "").length === 10 &&
-                      String(tel).startsWith("3")) ||
-                    (String(tel || "").replace(/\D/g, "").length === 12 &&
-                      String(tel).startsWith("57"))
-                  ) {
-                    sendWhatsApp();
-                  } else {
-                    showAlert(
-                      "Número de teléfono inválido para WhatsApp.",
-                      "error"
-                    );
-                  }
-                } catch (e) {}
-              }
               document.getElementById("registro-form").reset();
 
               setTimeout(() => {
@@ -318,6 +293,7 @@
       }
 
       const telInput = document.getElementById("telefono");
+      const shareBtn = document.getElementById("share-btn");
       const telError = document.getElementById("telefono-error");
       function updatePhoneValidity() {
         const raw = telInput.value;
@@ -333,10 +309,16 @@
           telError.textContent = "";
           telError.style.display = "none";
         }
+        if (shareBtn) shareBtn.disabled = !valid;
       }
       telInput.addEventListener("input", updatePhoneValidity);
       telInput.addEventListener("blur", updatePhoneValidity);
       updatePhoneValidity();
+
+      const shareBtnEl = document.getElementById("share-btn");
+      if (shareBtnEl) {
+        shareBtnEl.addEventListener("click", sendWhatsApp);
+      }
 
       function addAdminAlert(type, payload) {
         try {
